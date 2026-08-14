@@ -1,0 +1,7 @@
+node_modules/
+backend/node_modules/
+webclient/node_modules/
+backend/.env
+backend/data/
+backend/dist/
+.netlify/

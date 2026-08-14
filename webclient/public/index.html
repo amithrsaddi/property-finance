@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Property Finance — Sign in</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+
+  <body class="auth-page">
+    <div class="auth-art" aria-hidden="true">
+      <img class="auth-icons" src="/images/auth-icons.svg" alt="" />
+      <img class="auth-skyline" src="/images/auth-skyline.svg" alt="" />
+    </div>
+
+    <header class="auth-brand">
+      <div class="auth-logo" aria-hidden="true">
+        <svg viewBox="0 0 72 72" width="56" height="56">
+          <path fill="#4f46e5" fill-rule="evenodd" d="M14 10h24c11.6 0 20 7.2 20 17.6 0 8.2-5.2 14.6-13.2 16.8L56 62H44.4L34 46H26v16H14V10zm12 8v20h12.4c6.2 0 10.4-3.4 10.4-9.4S44.6 18 38.4 18H26z"/>
+          <path fill="#22c55e" d="M46 8l16 14h-9v16h-10V22h-9L46 8z"/>
+        </svg>
+      </div>
+      <h1>Property Finance</h1>
+      <p>One place to manage Mortgages, Rents, Expenses, Properties and Maintenance</p>
+    </header>
+
+    <main class="auth-card">
+      <section class="form-panel active" id="signin">
+        <form id="signin-form" class="stack">
+          <div class="field">
+            <label for="signin-email">Email Address</label>
+            <div class="auth-input">
+              <span class="auth-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"/></svg>
+              </span>
+              <input id="signin-email" name="email" type="email" autocomplete="email" placeholder="Enter your email" required />
+            </div>
+          </div>
+          <div class="field">
+            <label for="signin-password">Password</label>
+            <div class="auth-input">
+              <span class="auth-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M18 8h-1V6c0-2.8-2.2-5-5-5S7 3.2 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.7 1.3-3 3-3s3 1.3 3 3v2H9V6z"/></svg>
+              </span>
+              <input id="signin-password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+            </div>
+          </div>
+          <div class="auth-forgot">
+            <button class="auth-text-btn" data-target="forgot" type="button">Forgot password?</button>
+          </div>
+          <button class="btn auth-submit" type="submit">Sign In</button>
+        </form>
+        <p class="auth-alt">Don't have an account? <button class="auth-text-btn strong" data-target="register" type="button">Sign Up</button></p>
+      </section>
+
+      <section class="form-panel" id="register">
+        <form id="register-form" class="stack">
+          <div class="field">
+            <label for="register-name">Full name</label>
+            <div class="auth-input">
+              <span class="auth-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z"/></svg>
+              </span>
+              <input id="register-name" name="name" autocomplete="name" placeholder="Enter your name" required />
+            </div>
+          </div>
+          <div class="field">
+            <label for="register-email">Email Address</label>
+            <div class="auth-input">
+              <span class="auth-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"/></svg>
+              </span>
+              <input id="register-email" name="email" type="email" autocomplete="email" placeholder="Enter your email" required />
+            </div>
+          </div>
+          <div class="field">
+            <label for="register-password">Password</label>
+            <div class="auth-input">
+              <span class="auth-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M18 8h-1V6c0-2.8-2.2-5-5-5S7 3.2 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.7 1.3-3 3-3s3 1.3 3 3v2H9V6z"/></svg>
+              </span>
+              <input id="register-password" name="password" type="password" autocomplete="new-password" placeholder="Create a password" minlength="6" required />
+            </div>
+          </div>
+          <button class="btn auth-submit" type="submit">Create account</button>
+        </form>
+        <p class="auth-alt">Already have an account? <button class="auth-text-btn strong" data-target="signin" type="button">Sign In</button></p>
+      </section>
+
+      <section class="form-panel" id="forgot">
+        <form id="forgot-form" class="stack">
+          <div class="field">
+            <label for="forgot-email">Email Address</label>
+            <div class="auth-input">
+              <span class="auth-input-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"/></svg>
+              </span>
+              <input id="forgot-email" name="email" type="email" autocomplete="email" placeholder="Enter your email" required />
+            </div>
+          </div>
+          <button class="btn auth-submit" type="submit">Send reset link</button>
+        </form>
+        <p class="auth-alt"><button class="auth-text-btn strong" data-target="signin" type="button">Back to Sign In</button></p>
+      </section>
+
+      <div class="status" id="auth-status" hidden></div>
+    </main>
+
+    <script src="/config.js"></script>
+    <script type="module" src="/pages/auth.js"></script>
+  </body>
+</html>

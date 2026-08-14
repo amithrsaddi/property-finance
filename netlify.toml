@@ -1,0 +1,16 @@
+[build]
+  command = "npm install && npm --prefix backend install && npm --prefix backend run build && npm --prefix webclient install && npm --prefix webclient run build"
+  publish = "webclient/public"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["mongoose", "bcryptjs"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
