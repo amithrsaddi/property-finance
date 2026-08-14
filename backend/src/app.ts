@@ -18,8 +18,32 @@ function corsOrigin(): CorsOptions["origin"] {
   return origins.length === 1 ? origins[0] : origins;
 }
 
+function parseServerlessBody(req: express.Request, _res: express.Response, next: express.NextFunction): void {
+  const existing = req.body as unknown;
+  if (!Buffer.isBuffer(existing) && typeof existing !== "string") {
+    next();
+    return;
+  }
+
+  const raw = (Buffer.isBuffer(existing) ? existing.toString("utf8") : existing).trim();
+  if (!raw) {
+    req.body = {};
+    next();
+    return;
+  }
+
+  try {
+    req.body = JSON.parse(raw);
+    (req as express.Request & { _body?: boolean })._body = true;
+  } catch {
+    // Leave the raw body for express.json() to reject with its usual error.
+  }
+  next();
+}
+
 export function createApp(): express.Express {
   const app = express();
+  app.use(parseServerlessBody);
   app.use(express.json());
   app.use(
     cors({
