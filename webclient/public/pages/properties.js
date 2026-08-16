@@ -99,29 +99,14 @@ function setTheme(theme) {
   applyTheme(theme);
 }
 function qs(params) {
-  const search = new URLSearchParams();
+  const search2 = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== void 0 && value !== null && value !== "") {
-      search.set(key, String(value));
+      search2.set(key, String(value));
     }
   }
-  const result = search.toString();
+  const result = search2.toString();
   return result ? `?${result}` : "";
-}
-function statusClass(status) {
-  const map = {
-    paid: "ok",
-    upcoming: "info",
-    unpaid: "warn",
-    late: "warn",
-    overdue: "warn",
-    partially_paid: "warn",
-    partial: "warn",
-    missed: "bad",
-    active: "ok",
-    archived: "muted"
-  };
-  return map[status] || "info";
 }
 function labelize(value) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -419,28 +404,55 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/properties.ts
+var VIEW_KEY = "pf-properties-view";
+var user = getUser();
 var root = mountShell(
   "/properties.html",
   "Properties",
   "Manage your property portfolio.",
-  `<button class="btn" id="add-property-btn" type="button">Add Property</button>`
+  `<button class="btn" id="add-property-btn" type="button">+ Add Property</button>`
 );
-var user = getUser();
 var editingId = null;
+var cache = [];
+var statusFilter = "all";
+var sortBy = "newest";
+var search = "";
+var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+var openMenuId = null;
 root.innerHTML = `
-  <section class="panel">
-    <div class="list-toolbar">
-      <div class="field">
-        <label for="status-filter">Show</label>
-        <select id="status-filter">
-          <option value="active">Active</option>
-          <option value="archived">Archived</option>
-          <option value="all">All</option>
-        </select>
+  <section class="panel table-card">
+    <div class="table-toolbar">
+      <div class="seg-tabs" id="status-tabs">
+        <button class="seg-tab active" data-status="all" type="button">All properties</button>
+        <button class="seg-tab" data-status="archived" type="button">Archived</button>
       </div>
-      <div class="status" id="status" style="margin:0;min-width:12rem" hidden></div>
+      <div class="table-toolbar-end">
+        <label class="sort-field">
+          <span>Sort by</span>
+          <select id="sort-by">
+            <option value="newest">Newest</option>
+            <option value="name">Name</option>
+            <option value="value">Value</option>
+            <option value="rent">Rent</option>
+          </select>
+        </label>
+        <label class="search-field">
+          <span class="sr-only">Search</span>
+          <input id="property-search" type="search" placeholder="Search" />
+          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>
+        </label>
+        <div class="view-toggle" role="group" aria-label="View">
+          <button class="view-btn${view === "list" ? " active" : ""}" id="view-list" type="button" aria-label="List view" aria-pressed="${view === "list"}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
+          </button>
+          <button class="view-btn${view === "grid" ? " active" : ""}" id="view-grid" type="button" aria-label="Grid view" aria-pressed="${view === "grid"}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="property-list" id="property-list"></div>
+    <div class="status" id="status" hidden></div>
+    <div id="property-list"></div>
   </section>
 
   <div class="modal-backdrop" id="property-modal" hidden>
@@ -483,6 +495,28 @@ root.innerHTML = `
 `;
 var form = document.getElementById("property-form");
 var modal = document.getElementById("property-modal");
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function initials(value) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) {
+    return "?";
+  }
+  return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+}
+function avatarTone(value) {
+  let hash = 0;
+  for (const char of value) {
+    hash = hash * 31 + char.charCodeAt(0) >>> 0;
+  }
+  return hash % 5;
+}
+function createdTime(row) {
+  const raw = row.createdAt || row.created_at;
+  const time = raw ? new Date(String(raw)).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
 function openModal(title) {
   document.getElementById("form-title").textContent = title;
   modal.hidden = false;
@@ -510,9 +544,7 @@ function fillForm(property) {
     property.propertyType || "residential"
   );
   form.elements.namedItem("purchasePrice").value = property.purchasePrice != null ? String(property.purchasePrice) : "";
-  form.elements.namedItem("purchaseDate").value = String(
-    property.purchaseDate || ""
-  );
+  form.elements.namedItem("purchaseDate").value = String(property.purchaseDate || "");
   form.elements.namedItem("currentValue").value = property.currentValue != null ? String(property.currentValue) : "";
   form.elements.namedItem("ownershipPercentage").value = String(
     property.ownershipPercentage ?? 100
@@ -523,44 +555,126 @@ function fillForm(property) {
   form.elements.namedItem("status").value = String(property.status || "active");
   form.elements.namedItem("notes").value = String(property.notes || "");
 }
-async function loadProperties() {
-  const status = document.getElementById("status-filter").value;
-  const data = await api(
-    `/properties${qs({ status })}`
-  );
-  const list = document.getElementById("property-list");
-  if (!data.properties.length) {
-    list.innerHTML = `<p class="empty">No properties found. Use Add Property to create one.</p>`;
-    return;
+function visibleRows() {
+  const query = search.trim().toLowerCase();
+  const rows = cache.filter((row) => {
+    if (!query) {
+      return true;
+    }
+    const haystack = [row.name, row.address, row.propertyType, row.notes].map((value) => String(value || "").toLowerCase()).join(" ");
+    return haystack.includes(query);
+  });
+  rows.sort((a, b) => {
+    if (sortBy === "name") {
+      return String(a.name || "").localeCompare(String(b.name || ""), "en-GB");
+    }
+    if (sortBy === "value") {
+      return Number(b.currentValue || 0) - Number(a.currentValue || 0);
+    }
+    if (sortBy === "rent") {
+      return Number(b.expectedMonthlyRent || 0) - Number(a.expectedMonthlyRent || 0);
+    }
+    return createdTime(b) - createdTime(a);
+  });
+  return rows;
+}
+function statusBadge(status) {
+  const archived = status === "archived";
+  return `<span class="pill ${archived ? "paused" : "done"}">${archived ? "Archived" : "Active"}</span>`;
+}
+function nameCell(row) {
+  const name = String(row.name || "Untitled");
+  return `<div class="name-cell">
+    <span class="row-avatar tone-${avatarTone(name)}">${escapeHtml(initials(name))}</span>
+    <div>
+      <a class="name-title" href="/property.html?id=${escapeHtml(row.id)}">${escapeHtml(name)}</a>
+      <div class="name-sub">${escapeHtml(row.address || "No address")}</div>
+    </div>
+  </div>`;
+}
+function summaryCell(row) {
+  const type = labelize(String(row.propertyType || "residential"));
+  const rent = money(Number(row.expectedMonthlyRent || 0), user.preferredCurrency);
+  const value = money(Number(row.currentValue || 0), user.preferredCurrency);
+  return `<div class="summary-cell">
+    <div class="name-title">${escapeHtml(type)}</div>
+    <div class="name-sub">Rent ${escapeHtml(rent)} \xB7 Value ${escapeHtml(value)}</div>
+  </div>`;
+}
+function actionMenu(row) {
+  const id = String(row.id);
+  const open = openMenuId === id;
+  const archived = row.status === "archived";
+  return `<div class="row-menu ${open ? "open" : ""}">
+    <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">\u22EF</button>
+    <div class="row-menu-pop"${open ? "" : " hidden"}>
+      <a href="/property.html?id=${escapeHtml(id)}">Open</a>
+      <button type="button" data-edit="${escapeHtml(id)}">Edit</button>
+      ${archived ? `<button type="button" data-restore="${escapeHtml(id)}">Restore</button>` : `<button type="button" data-archive="${escapeHtml(id)}">Archive</button>`}
+    </div>
+  </div>`;
+}
+function renderList(rows) {
+  if (!rows.length) {
+    return `<p class="empty">No properties found. Use + Add Property to create one.</p>`;
   }
-  list.innerHTML = data.properties.map((p) => {
-    return `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <a href="/property.html?id=${p.id}">${p.name}</a>
-            <span class="badge ${statusClass(String(p.status))}">${labelize(String(p.status))}</span>
+  if (view === "grid") {
+    return `<div class="property-grid">${rows.map(
+      (row) => `<article class="property-card">
+          <div class="property-card-head">
+            ${nameCell(row)}
+            ${actionMenu(row)}
           </div>
-          <div class="muted">${p.address || "No address"}</div>
-          <div class="property-row-meta">
-            <span>${labelize(String(p.propertyType))}</span>
-            <span>Rent ${money(Number(p.expectedMonthlyRent), user.preferredCurrency)}</span>
-            <span>Value ${money(Number(p.currentValue || 0), user.preferredCurrency)}</span>
-            <span>Ownership ${p.ownershipPercentage ?? 100}%</span>
+          <div class="property-card-meta">
+            ${statusBadge(String(row.status))}
+            ${summaryCell(row)}
           </div>
-        </div>
-        <div class="property-row-actions actions">
-          <a class="btn ghost" href="/property.html?id=${p.id}">Open</a>
-          <button class="btn secondary" data-edit="${p.id}" type="button">Edit</button>
-          ${p.status === "active" ? `<button class="btn danger" data-archive="${p.id}" type="button">Archive</button>` : ""}
-        </div>
-      </article>`;
-  }).join("");
+        </article>`
+    ).join("")}</div>`;
+  }
+  return `<div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Summary</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(
+    (row) => `<tr>
+              <td>${nameCell(row)}</td>
+              <td>${statusBadge(String(row.status))}</td>
+              <td>${summaryCell(row)}</td>
+              <td>${actionMenu(row)}</td>
+            </tr>`
+  ).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+function bindListActions(rows) {
+  const list = document.getElementById("property-list");
+  list.querySelectorAll("[data-menu]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const id = String(button.dataset.menu);
+      openMenuId = openMenuId === id ? null : id;
+      render();
+    });
+  });
+  list.querySelectorAll(".row-menu-pop").forEach((pop) => {
+    pop.addEventListener("click", (event) => event.stopPropagation());
+  });
   list.querySelectorAll("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => {
-      const property = data.properties.find((p) => String(p.id) === String(button.dataset.edit));
+      const property = rows.find((row) => String(row.id) === String(button.dataset.edit));
       if (!property) {
         return;
       }
+      openMenuId = null;
       fillForm(property);
       openModal("Edit property");
     });
@@ -570,12 +684,63 @@ async function loadProperties() {
       try {
         await api(`/properties/${button.dataset.archive}/archive`, { method: "POST" });
         setStatus(document.getElementById("status"), "Property archived.", "success");
+        openMenuId = null;
         await loadProperties();
       } catch (error) {
         setStatus(document.getElementById("status"), error.message, "error");
       }
     });
   });
+  list.querySelectorAll("[data-restore]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const property = rows.find((row) => String(row.id) === String(button.dataset.restore));
+      if (!property) {
+        return;
+      }
+      try {
+        await api(`/properties/${property.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            name: property.name,
+            address: property.address,
+            propertyType: property.propertyType,
+            purchasePrice: property.purchasePrice,
+            purchaseDate: property.purchaseDate,
+            currentValue: property.currentValue,
+            ownershipPercentage: property.ownershipPercentage,
+            expectedMonthlyRent: property.expectedMonthlyRent,
+            notes: property.notes,
+            status: "active"
+          })
+        });
+        setStatus(document.getElementById("status"), "Property restored.", "success");
+        openMenuId = null;
+        await loadProperties();
+      } catch (error) {
+        setStatus(document.getElementById("status"), error.message, "error");
+      }
+    });
+  });
+}
+function render() {
+  document.querySelectorAll("#status-tabs .seg-tab").forEach((el) => {
+    el.classList.toggle("active", el.dataset.status === statusFilter);
+  });
+  document.getElementById("view-list")?.classList.toggle("active", view === "list");
+  document.getElementById("view-grid")?.classList.toggle("active", view === "grid");
+  document.getElementById("view-list")?.setAttribute("aria-pressed", String(view === "list"));
+  document.getElementById("view-grid")?.setAttribute("aria-pressed", String(view === "grid"));
+  const rows = visibleRows();
+  const list = document.getElementById("property-list");
+  list.innerHTML = renderList(rows);
+  bindListActions(rows);
+}
+async function loadProperties() {
+  const data = await api(
+    `/properties${qs({ status: statusFilter === "archived" ? "archived" : "active" })}`
+  );
+  cache = data.properties;
+  render();
 }
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -621,8 +786,41 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !modal.hidden) {
     closeModal();
   }
+  if (event.key === "Escape" && openMenuId) {
+    openMenuId = null;
+    render();
+  }
 });
-document.getElementById("status-filter")?.addEventListener("change", () => {
-  void loadProperties();
+document.addEventListener("click", () => {
+  if (!openMenuId) {
+    return;
+  }
+  openMenuId = null;
+  render();
+});
+document.getElementById("status-tabs")?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (target.dataset.status === "all" || target.dataset.status === "archived") {
+    statusFilter = target.dataset.status;
+    void loadProperties();
+  }
+});
+document.getElementById("sort-by")?.addEventListener("change", (event) => {
+  sortBy = event.target.value;
+  render();
+});
+document.getElementById("property-search")?.addEventListener("input", (event) => {
+  search = event.target.value;
+  render();
+});
+document.getElementById("view-list")?.addEventListener("click", () => {
+  view = "list";
+  sessionStorage.setItem(VIEW_KEY, view);
+  render();
+});
+document.getElementById("view-grid")?.addEventListener("click", () => {
+  view = "grid";
+  sessionStorage.setItem(VIEW_KEY, view);
+  render();
 });
 void loadProperties();

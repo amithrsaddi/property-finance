@@ -235,6 +235,15 @@ router.put("/:id", async (req: AuthedRequest, res) => {
     return res.status(404).json({ message: "Mortgage not found." });
   }
 
+  if (req.body?.propertyId) {
+    const propertyId = String(req.body.propertyId);
+    const property = await Property.findOne({ _id: propertyId, userId: req.user!.id });
+    if (!property) {
+      return res.status(400).json({ message: "Valid propertyId is required." });
+    }
+    existing.propertyId = property._id;
+  }
+
   existing.lender = String(req.body?.lender ?? existing.lender);
   existing.originalLoanAmount = Number(req.body?.originalLoanAmount ?? existing.originalLoanAmount);
   existing.outstandingBalance = Number(req.body?.outstandingBalance ?? existing.outstandingBalance);
@@ -261,6 +270,18 @@ router.put("/:id", async (req: AuthedRequest, res) => {
     mortgage: mapMortgage(existing.toObject(), property?.name),
     message: "Mortgage updated."
   });
+});
+
+router.delete("/:id", async (req: AuthedRequest, res) => {
+  const existing = await Mortgage.findOne({ _id: req.params.id, userId: req.user!.id });
+  if (!existing) {
+    return res.status(404).json({ message: "Mortgage not found." });
+  }
+
+  await MortgagePayment.deleteMany({ mortgageId: existing._id, userId: req.user!.id });
+  await existing.deleteOne();
+
+  return res.json({ message: "Mortgage deleted." });
 });
 
 async function applyPaymentUpdate(

@@ -99,17 +99,209 @@ function setTheme(theme) {
   applyTheme(theme);
 }
 function qs(params) {
-  const search = new URLSearchParams();
+  const search2 = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== void 0 && value !== null && value !== "") {
-      search.set(key, String(value));
+      search2.set(key, String(value));
     }
   }
-  const result = search.toString();
+  const result = search2.toString();
   return result ? `?${result}` : "";
+}
+function formatDateDmY(value) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!match) {
+    return raw || "-";
+  }
+  return `${match[3]}-${match[2]}-${match[1]}`;
 }
 function labelize(value) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// src/list-view.ts
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function initials(value) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) {
+    return "?";
+  }
+  return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+}
+function avatarTone(value) {
+  let hash = 0;
+  for (const char of value) {
+    hash = hash * 31 + char.charCodeAt(0) >>> 0;
+  }
+  return hash % 5;
+}
+function pillKind(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "paid" || value === "active" || value === "done") {
+    return "done";
+  }
+  if (value === "upcoming" || value === "partial" || value === "partially_paid" || value === "info") {
+    return "progress";
+  }
+  if (value === "archived" || value === "paused") {
+    return "paused";
+  }
+  if (value === "missed" || value === "overdue" || value === "unpaid" || value === "bad") {
+    return "bad";
+  }
+  return "warn";
+}
+function statusPill(status, label) {
+  const text = label || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return `<span class="pill ${pillKind(status)}">${escapeHtml(text)}</span>`;
+}
+function nameCell(title, subtitle, href) {
+  const heading = href ? `<a class="name-title" href="${escapeHtml(href)}">${escapeHtml(title)}</a>` : `<div class="name-title">${escapeHtml(title)}</div>`;
+  return `<div class="name-cell">
+    <span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>
+    <div>
+      ${heading}
+      <div class="name-sub">${escapeHtml(subtitle)}</div>
+    </div>
+  </div>`;
+}
+function summaryCell(title, subtitle) {
+  return `<div class="summary-cell">
+    <div class="name-title">${escapeHtml(title)}</div>
+    <div class="name-sub">${escapeHtml(subtitle)}</div>
+  </div>`;
+}
+function kebabMenu(id, open, itemsHtml) {
+  if (!itemsHtml.trim()) {
+    return "";
+  }
+  return `<div class="row-menu ${open ? "open" : ""}">
+    <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">\u22EF</button>
+    <div class="row-menu-pop"${open ? "" : " hidden"}>${itemsHtml}</div>
+  </div>`;
+}
+function viewToggleHtml(view2) {
+  return `<div class="view-toggle" role="group" aria-label="View">
+    <button class="view-btn${view2 === "list" ? " active" : ""}" data-view-mode="list" type="button" aria-label="List view" aria-pressed="${view2 === "list"}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
+    </button>
+    <button class="view-btn${view2 === "grid" ? " active" : ""}" data-view-mode="grid" type="button" aria-label="Grid view" aria-pressed="${view2 === "grid"}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+    </button>
+  </div>`;
+}
+function searchFieldHtml(id = "list-search") {
+  return `<label class="search-field">
+    <span class="sr-only">Search</span>
+    <input id="${id}" type="search" placeholder="Search" />
+    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>
+  </label>`;
+}
+function sortFieldHtml(options, id = "sort-by") {
+  return `<label class="sort-field">
+    <span>Sort by</span>
+    <select id="${id}">
+      ${options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join("")}
+    </select>
+  </label>`;
+}
+function renderDataList(rows, view2, empty, openMenuId2) {
+  if (!rows.length) {
+    return `<p class="empty">${empty}</p>`;
+  }
+  const hasActions = rows.some((row) => Boolean(row.actions));
+  const cells = (row) => {
+    const actions = kebabMenu(row.id, openMenuId2 === row.id, row.actions || "");
+    return {
+      name: nameCell(row.title, row.subtitle, row.href),
+      status: statusPill(row.status, row.statusLabel),
+      summary: summaryCell(row.summaryTitle, row.summarySub),
+      actions
+    };
+  };
+  if (view2 === "grid") {
+    return `<div class="property-grid">${rows.map((row) => {
+      const cell = cells(row);
+      return `<article class="property-card">
+          <div class="property-card-head">
+            ${cell.name}
+            ${hasActions ? cell.actions : ""}
+          </div>
+          <div class="property-card-meta">
+            ${cell.status}
+            ${cell.summary}
+          </div>
+        </article>`;
+    }).join("")}</div>`;
+  }
+  return `<div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Summary</th>
+          ${hasActions ? "<th>Action</th>" : ""}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row) => {
+    const cell = cells(row);
+    return `<tr>
+              <td>${cell.name}</td>
+              <td>${cell.status}</td>
+              <td>${cell.summary}</td>
+              ${hasActions ? `<td>${cell.actions}</td>` : ""}
+            </tr>`;
+  }).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+function bindListChrome(options) {
+  document.querySelectorAll("[data-view-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.viewMode === options.view);
+    button.setAttribute("aria-pressed", String(button.dataset.viewMode === options.view));
+    button.addEventListener("click", () => {
+      const next = button.dataset.viewMode === "grid" ? "grid" : "list";
+      document.querySelectorAll("[data-view-mode]").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.viewMode === next);
+        btn.setAttribute("aria-pressed", String(btn.dataset.viewMode === next));
+      });
+      options.onView(next);
+    });
+  });
+  document.getElementById(options.searchId || "list-search")?.addEventListener("input", (event) => {
+    options.onSearch(event.target.value);
+  });
+  if (options.onSort) {
+    document.getElementById(options.sortId || "sort-by")?.addEventListener("change", (event) => {
+      options.onSort(event.target.value);
+    });
+  }
+}
+function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
+  root2.querySelectorAll("[data-menu]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const id = String(button.dataset.menu);
+      setOpenMenuId(openMenuId2 === id ? null : id);
+      rerender();
+    });
+  });
+  root2.querySelectorAll(".row-menu-pop").forEach((pop) => {
+    pop.addEventListener("click", (event) => event.stopPropagation());
+  });
+}
+function matchesQuery(row, query, keys) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  return keys.some((key) => String(row[key] ?? "").toLowerCase().includes(needle));
 }
 
 // src/shell.ts
@@ -404,24 +596,41 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/rates.ts
+var VIEW_KEY = "pf-rates-view";
 var root = mountShell(
   "/rates.html",
   "Rates",
   "Interest rates and fixed-rate expiry for your mortgages.",
-  `<button class="btn" id="add-mortgage-btn" type="button">Add Mortgage</button>`
+  `<button class="btn" id="add-mortgage-btn" type="button">+ Add Mortgage</button>`
 );
 var user = getUser();
 var presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
+var cache = [];
+var search = "";
+var sortBy = "name";
+var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+var editingId = null;
+var openMenuId = null;
 root.innerHTML = `
-  <section class="panel">
-    <div class="list-toolbar">
-      <div class="filters" style="margin:0;flex:1">
-        <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        <div class="actions" style="align-self:end"><button class="btn secondary" id="refresh" type="button">Refresh</button></div>
+  <section class="panel table-card">
+    <div class="table-toolbar">
+      <div class="table-toolbar-start">
+        <div class="table-filters">
+          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+        </div>
       </div>
-      <div class="status" id="status" style="margin:0;min-width:12rem" hidden></div>
+      <div class="table-toolbar-end">
+        ${sortFieldHtml([
+  { value: "name", label: "Name" },
+  { value: "rate", label: "Rate" },
+  { value: "expiry", label: "Expiry" }
+])}
+        ${searchFieldHtml()}
+        ${viewToggleHtml(view)}
+      </div>
     </div>
-    <div class="property-list" id="content"></div>
+    <div class="status" id="status" hidden></div>
+    <div id="content"></div>
   </section>
 
   <div class="modal-backdrop" id="mortgage-modal" hidden>
@@ -462,13 +671,43 @@ root.innerHTML = `
 `;
 var mortgageModal = document.getElementById("mortgage-modal");
 var mortgageForm = document.getElementById("mortgage-form");
-function openBackdrop() {
+function isoDate(value) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
+  return match ? match[1] : "";
+}
+function openBackdrop(title = "Add mortgage") {
+  document.getElementById("mortgage-form-title").textContent = title;
   mortgageModal.hidden = false;
   document.body.classList.add("modal-open");
 }
 function closeBackdrop() {
   mortgageModal.hidden = true;
   document.body.classList.remove("modal-open");
+  editingId = null;
+}
+function fillForm(row) {
+  editingId = String(row.id);
+  document.getElementById("mortgagePropertyId").value = String(row.property_id || "");
+  mortgageForm.elements.namedItem("lender").value = String(row.lender || "");
+  mortgageForm.elements.namedItem("originalLoanAmount").value = String(
+    row.original_loan_amount ?? ""
+  );
+  mortgageForm.elements.namedItem("outstandingBalance").value = String(
+    row.outstanding_balance ?? ""
+  );
+  mortgageForm.elements.namedItem("interestRate").value = String(row.interest_rate ?? "");
+  mortgageForm.elements.namedItem("mortgageType").value = String(
+    row.mortgage_type || "repayment"
+  );
+  mortgageForm.elements.namedItem("monthlyRepayment").value = String(
+    row.monthly_repayment ?? ""
+  );
+  mortgageForm.elements.namedItem("paymentDay").value = String(row.payment_day || 1);
+  mortgageForm.elements.namedItem("startDate").value = isoDate(row.start_date);
+  mortgageForm.elements.namedItem("endDate").value = isoDate(row.end_date);
+  mortgageForm.elements.namedItem("fixedRateExpiry").value = isoDate(row.fixed_rate_expiry);
+  mortgageForm.elements.namedItem("notes").value = String(row.notes || "");
 }
 async function loadProperties() {
   const data = await api(
@@ -495,47 +734,94 @@ function expiryLabel(value) {
   }
   const expiry = /* @__PURE__ */ new Date(`${value}T00:00:00.000Z`);
   const today = /* @__PURE__ */ new Date();
-  const days = Math.round((expiry.getTime() - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 864e5);
+  const days = Math.round(
+    (expiry.getTime() - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 864e5
+  );
+  const formatted = formatDateDmY(value);
   if (days < 0) {
-    return `Expired ${value}`;
+    return `Expired ${formatted}`;
   }
   if (days === 0) {
-    return `Expires today (${value})`;
+    return `Expires today (${formatted})`;
   }
   if (days <= 90) {
-    return `Expires in ${days} days (${value})`;
+    return `Expires in ${days} days (${formatted})`;
   }
-  return `Fixed until ${value}`;
+  return `Fixed until ${formatted}`;
 }
-function renderRates(rows) {
+function visibleRows() {
+  const rows = cache.filter(
+    (row) => matchesQuery(row, search, [
+      "property_name",
+      "lender",
+      "mortgage_type",
+      "status"
+    ])
+  );
+  rows.sort((a, b) => {
+    if (sortBy === "rate") {
+      return Number(b.interest_rate || 0) - Number(a.interest_rate || 0);
+    }
+    if (sortBy === "expiry") {
+      return String(a.fixed_rate_expiry || "9999").localeCompare(String(b.fixed_rate_expiry || "9999"));
+    }
+    return String(a.property_name || "").localeCompare(String(b.property_name || ""), "en-GB");
+  });
+  return rows;
+}
+function renderRates() {
   const content = document.getElementById("content");
-  if (!rows.length) {
-    content.innerHTML = `<p class="empty">No mortgage rates yet. Use Add Mortgage to create one.</p>`;
-    return;
-  }
-  content.innerHTML = rows.map(
-    (m) => `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <strong>${m.property_name}</strong>
-            <span class="badge ok">${labelize(String(m.mortgage_type || "repayment"))}</span>
-          </div>
-          <div class="muted">${m.lender}</div>
-          <div class="property-row-meta">
-            <span>Rate ${m.interest_rate}%</span>
-            <span>Monthly ${money(Number(m.monthly_repayment), user.preferredCurrency)}</span>
-            <span>Balance ${money(Number(m.outstanding_balance), user.preferredCurrency)}</span>
-            <span>${expiryLabel(m.fixed_rate_expiry)}</span>
-          </div>
-        </div>
-      </article>`
-  ).join("");
+  const rows = visibleRows();
+  content.innerHTML = renderDataList(
+    rows.map((m) => ({
+      id: String(m.id),
+      title: String(m.property_name || "Property"),
+      subtitle: String(m.lender || "Lender"),
+      href: m.property_id ? `/property.html?id=${m.property_id}` : void 0,
+      status: m.status === "active" ? "active" : String(m.mortgage_type || "repayment"),
+      statusLabel: labelize(String(m.mortgage_type || "repayment")),
+      summaryTitle: `${m.interest_rate}% \xB7 ${money(Number(m.monthly_repayment), user.preferredCurrency)} / mo`,
+      summarySub: expiryLabel(m.fixed_rate_expiry),
+      actions: `<button type="button" data-edit="${m.id}">Edit</button><button type="button" data-delete="${m.id}">Delete</button>`
+    })),
+    view,
+    "No mortgage rates yet. Use Add Mortgage to create one.",
+    openMenuId
+  );
+  bindRowMenus(
+    content,
+    openMenuId,
+    (id) => {
+      openMenuId = id;
+    },
+    renderRates
+  );
+  content.querySelectorAll("[data-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = rows.find((item) => String(item.id) === String(button.dataset.edit));
+      if (!row) {
+        return;
+      }
+      openMenuId = null;
+      fillForm(row);
+      openBackdrop("Edit mortgage");
+    });
+  });
+  content.querySelectorAll("[data-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await api(`/mortgages/${button.dataset.delete}`, { method: "DELETE" });
+      setStatus(document.getElementById("status"), "Mortgage deleted.", "success");
+      openMenuId = null;
+      await loadRates();
+    });
+  });
 }
 async function loadRates() {
   const propertyId = document.getElementById("filterProperty").value;
   try {
     const data = await api(`/mortgages${qs({ propertyId })}`);
-    renderRates(data.mortgages.filter((m) => m.status === "active"));
+    cache = data.mortgages.filter((m) => m.status === "active");
+    renderRates();
     setStatus(document.getElementById("status"), "", "info");
   } catch (error) {
     setStatus(document.getElementById("status"), error.message, "error");
@@ -544,25 +830,28 @@ async function loadRates() {
 mortgageForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(mortgageForm);
+  const payload = {
+    propertyId: String(formData.get("propertyId") || ""),
+    lender: String(formData.get("lender")),
+    originalLoanAmount: Number(formData.get("originalLoanAmount")),
+    outstandingBalance: Number(formData.get("outstandingBalance")),
+    interestRate: Number(formData.get("interestRate")),
+    mortgageType: String(formData.get("mortgageType")),
+    monthlyRepayment: Number(formData.get("monthlyRepayment")),
+    paymentDay: Number(formData.get("paymentDay")),
+    startDate: String(formData.get("startDate")),
+    endDate: String(formData.get("endDate") || "") || null,
+    fixedRateExpiry: String(formData.get("fixedRateExpiry") || "") || null,
+    notes: String(formData.get("notes") || "")
+  };
   try {
-    await api("/mortgages", {
-      method: "POST",
-      body: JSON.stringify({
-        propertyId: String(formData.get("propertyId") || ""),
-        lender: String(formData.get("lender")),
-        originalLoanAmount: Number(formData.get("originalLoanAmount")),
-        outstandingBalance: Number(formData.get("outstandingBalance")),
-        interestRate: Number(formData.get("interestRate")),
-        mortgageType: String(formData.get("mortgageType")),
-        monthlyRepayment: Number(formData.get("monthlyRepayment")),
-        paymentDay: Number(formData.get("paymentDay")),
-        startDate: String(formData.get("startDate")),
-        endDate: String(formData.get("endDate") || "") || null,
-        fixedRateExpiry: String(formData.get("fixedRateExpiry") || "") || null,
-        notes: String(formData.get("notes") || "")
-      })
-    });
-    setStatus(document.getElementById("status"), "Mortgage created.", "success");
+    if (editingId) {
+      await api(`/mortgages/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
+      setStatus(document.getElementById("status"), "Mortgage updated.", "success");
+    } else {
+      await api("/mortgages", { method: "POST", body: JSON.stringify(payload) });
+      setStatus(document.getElementById("status"), "Mortgage created.", "success");
+    }
     closeBackdrop();
     mortgageForm.reset();
     mortgageForm.elements.namedItem("paymentDay").value = "1";
@@ -572,12 +861,13 @@ mortgageForm.addEventListener("submit", async (event) => {
   }
 });
 document.getElementById("add-mortgage-btn")?.addEventListener("click", () => {
+  editingId = null;
   mortgageForm.reset();
   mortgageForm.elements.namedItem("paymentDay").value = "1";
   if (presetPropertyId) {
     document.getElementById("mortgagePropertyId").value = presetPropertyId;
   }
-  openBackdrop();
+  openBackdrop("Add mortgage");
 });
 document.getElementById("close-mortgage-modal")?.addEventListener("click", () => closeBackdrop());
 document.getElementById("cancel-mortgage-modal")?.addEventListener("click", () => closeBackdrop());
@@ -589,13 +879,36 @@ mortgageModal.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !mortgageModal.hidden) {
     closeBackdrop();
+  } else if (event.key === "Escape" && openMenuId) {
+    openMenuId = null;
+    renderRates();
   }
 });
-document.getElementById("refresh")?.addEventListener("click", () => {
-  void loadRates();
+document.addEventListener("click", () => {
+  if (!openMenuId) {
+    return;
+  }
+  openMenuId = null;
+  renderRates();
 });
 document.getElementById("filterProperty")?.addEventListener("change", () => {
   void loadRates();
+});
+bindListChrome({
+  view,
+  onView: (next) => {
+    view = next;
+    sessionStorage.setItem(VIEW_KEY, view);
+    renderRates();
+  },
+  onSearch: (value) => {
+    search = value;
+    renderRates();
+  },
+  onSort: (value) => {
+    sortBy = value;
+    renderRates();
+  }
 });
 void (async () => {
   await loadProperties();

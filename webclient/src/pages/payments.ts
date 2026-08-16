@@ -1,6 +1,17 @@
-import { api, getUser, money, qs, statusClass, labelize } from "../lib.js";
+import { api, formatDateDmY, getUser, money, qs, labelize } from "../lib.js";
+import {
+  bindListChrome,
+  bindRowMenus,
+  matchesQuery,
+  renderDataList,
+  searchFieldHtml,
+  sortFieldHtml,
+  viewToggleHtml,
+  type ListViewMode
+} from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
+const VIEW_KEY = "pf-payments-view";
 const root = mountShell(
   "/payments.html",
   "Payments",
@@ -10,21 +21,31 @@ const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 
 root.innerHTML = `
-  <section class="panel">
-    <div class="list-toolbar">
-      <div class="filters" style="margin:0;flex:1">
-        <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        <div class="actions" style="align-self:end"><button class="btn secondary" id="refresh" type="button">Refresh</button></div>
+  <section class="panel table-card">
+    <div class="table-toolbar">
+      <div class="table-toolbar-start">
+        <div class="seg-tabs" id="view-tabs">
+          <button class="seg-tab active" data-view="upcoming" type="button">Upcoming</button>
+          <button class="seg-tab" data-view="current" type="button">Current</button>
+          <button class="seg-tab" data-view="past" type="button">Past</button>
+          <button class="seg-tab" data-view="mortgages" type="button">Mortgages</button>
+        </div>
+        <div class="table-filters">
+          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+        </div>
       </div>
-      <div class="status" id="status" style="margin:0;min-width:12rem" hidden></div>
+      <div class="table-toolbar-end">
+        ${sortFieldHtml([
+          { value: "due", label: "Due date" },
+          { value: "name", label: "Name" },
+          { value: "amount", label: "Amount" }
+        ])}
+        ${searchFieldHtml()}
+        ${viewToggleHtml(sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list")}
+      </div>
     </div>
-    <div class="tabs" id="view-tabs">
-      <button class="tab active" data-view="upcoming" type="button">Upcoming</button>
-      <button class="tab" data-view="current" type="button">Current</button>
-      <button class="tab" data-view="past" type="button">Past</button>
-      <button class="tab" data-view="mortgages" type="button">Mortgages</button>
-    </div>
-    <div class="property-list" id="content"></div>
+    <div class="status" id="status" hidden></div>
+    <div id="content"></div>
   </section>
 
   <div class="modal-backdrop" id="payment-modal" hidden>
@@ -71,6 +92,10 @@ type Views = {
 
 let views: Views | null = null;
 let activeView: "upcoming" | "current" | "past" | "mortgages" = "upcoming";
+let search = "";
+let sortBy = "due";
+let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+let openMenuId: string | null = null;
 
 const paymentModal = document.getElementById("payment-modal") as HTMLDivElement;
 const paymentForm = document.getElementById("payment-form") as HTMLFormElement;
@@ -117,87 +142,96 @@ async function loadViews(): Promise<void> {
   render();
 }
 
+function sortRows(rows: Array<Record<string, unknown>>, keys: string[]): Array<Record<string, unknown>> {
+  const filtered = rows.filter((row) => matchesQuery(row, search, keys));
+  filtered.sort((a, b) => {
+    if (sortBy === "name") {
+      return String(a.property_name || "").localeCompare(String(b.property_name || ""), "en-GB");
+    }
+    if (sortBy === "amount") {
+      const aAmount = Number(a.expected_amount ?? a.outstanding_balance ?? 0);
+      const bAmount = Number(b.expected_amount ?? b.outstanding_balance ?? 0);
+      return bAmount - aAmount;
+    }
+    return String(a.due_date || a.fixed_rate_expiry || "").localeCompare(
+      String(b.due_date || b.fixed_rate_expiry || "")
+    );
+  });
+  return filtered;
+}
+
 function render(): void {
   if (!views) {
     return;
   }
-  document.querySelectorAll("#view-tabs .tab").forEach((el) => {
+  document.querySelectorAll("#view-tabs .seg-tab").forEach((el) => {
     el.classList.toggle("active", (el as HTMLElement).dataset.view === activeView);
   });
   const content = document.getElementById("content")!;
 
   if (activeView === "mortgages") {
-    content.innerHTML = mortgageList(views.activeMortgages);
+    const rows = sortRows(views.activeMortgages, ["property_name", "lender", "status"]);
+    content.innerHTML = renderDataList(
+      rows.map((m) => ({
+        id: String(m.id || m._id || m.property_name),
+        title: String(m.property_name || "Property"),
+        subtitle: String(m.lender || "Lender"),
+        href: m.property_id ? `/property.html?id=${m.property_id}` : undefined,
+        status: "active",
+        statusLabel: "Active",
+        summaryTitle: `Balance ${money(Number(m.outstanding_balance), user.preferredCurrency)}`,
+        summarySub: `Rate ${m.interest_rate}% · Monthly ${money(Number(m.monthly_repayment), user.preferredCurrency)}`
+      })),
+      view,
+      `No active mortgages. Add one from <a href="/rates.html">Rates</a>.`,
+      null
+    );
     return;
   }
 
-  const rows = views[activeView];
-  content.innerHTML = paymentList(rows);
+  const source = views[activeView];
+  const rows = sortRows(source, ["property_name", "lender", "status", "notes"]);
+  content.innerHTML = renderDataList(
+    rows.map((r) => {
+      const id = String(r.id || r._id);
+      const status = String(r.status || "upcoming");
+      return {
+        id,
+        title: String(r.property_name || "Property"),
+        subtitle: `${r.lender || "Lender"} · Due ${formatDateDmY(String(r.due_date || ""))}`,
+        href: r.property_id ? `/property.html?id=${r.property_id}` : undefined,
+        status,
+        statusLabel: labelize(status),
+        summaryTitle: `Expected ${money(Number(r.expected_amount), user.preferredCurrency)}`,
+        summarySub: `Paid ${
+          r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "-"
+        }${r.paid_date ? ` · ${formatDateDmY(String(r.paid_date))}` : ""}`,
+        actions: `<button type="button" data-edit="${id}" data-mode="edit">Edit</button>${
+          status === "paid" ? "" : `<button type="button" data-edit="${id}" data-mode="pay">Mark paid</button>`
+        }`
+      };
+    }),
+    view,
+    "No payments in this view.",
+    openMenuId
+  );
+  bindRowMenus(
+    content,
+    openMenuId,
+    (id) => {
+      openMenuId = id;
+    },
+    render
+  );
   content.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => {
       const row = rows.find((r) => String(r.id || r._id) === String(button.dataset.edit));
       if (row) {
+        openMenuId = null;
         openPaymentEditor(row, button.dataset.mode === "pay");
       }
     });
   });
-}
-
-function paymentList(rows: Array<Record<string, unknown>>): string {
-  if (!rows.length) {
-    return `<p class="empty">No payments in this view.</p>`;
-  }
-  return rows
-    .map(
-      (r) => `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <strong>${r.property_name}</strong>
-            <span class="badge ${statusClass(String(r.status))}">${labelize(String(r.status))}</span>
-          </div>
-          <div class="muted">${r.lender} · Due ${r.due_date}</div>
-          <div class="property-row-meta">
-            <span>Expected ${money(Number(r.expected_amount), user.preferredCurrency)}</span>
-            <span>Paid ${r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "-"}</span>
-            <span>Paid date ${r.paid_date || "-"}</span>
-          </div>
-        </div>
-        <div class="property-row-actions actions">
-          <button class="btn ghost" data-edit="${r.id || r._id}" data-mode="edit" type="button">Edit</button>
-          ${
-            r.status === "paid"
-              ? ""
-              : `<button class="btn secondary" data-edit="${r.id || r._id}" data-mode="pay" type="button">Mark paid</button>`
-          }
-        </div>
-      </article>`
-    )
-    .join("");
-}
-
-function mortgageList(rows: Array<Record<string, unknown>>): string {
-  if (!rows.length) {
-    return `<p class="empty">No active mortgages. Add one from <a href="/rates.html">Rates</a>.</p>`;
-  }
-  return rows
-    .map(
-      (m) => `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <strong>${m.property_name}</strong>
-            <span class="badge ok">Active</span>
-          </div>
-          <div class="muted">${m.lender}</div>
-          <div class="property-row-meta">
-            <span>Balance ${money(Number(m.outstanding_balance), user.preferredCurrency)}</span>
-            <span>Rate ${m.interest_rate}%</span>
-            <span>Monthly ${money(Number(m.monthly_repayment), user.preferredCurrency)}</span>
-            <span>Fixed expiry ${m.fixed_rate_expiry || "-"}</span>
-          </div>
-        </div>
-      </article>`
-    )
-    .join("");
 }
 
 function formStatusEl(): HTMLElement | null {
@@ -297,7 +331,17 @@ paymentModal.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !paymentModal.hidden) {
     closeBackdrop(paymentModal);
+  } else if (event.key === "Escape" && openMenuId) {
+    openMenuId = null;
+    render();
   }
+});
+document.addEventListener("click", () => {
+  if (!openMenuId) {
+    return;
+  }
+  openMenuId = null;
+  render();
 });
 document.getElementById("view-tabs")?.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
@@ -308,14 +352,29 @@ document.getElementById("view-tabs")?.addEventListener("click", (event) => {
     target.dataset.view === "mortgages"
   ) {
     activeView = target.dataset.view;
+    openMenuId = null;
     render();
   }
 });
-document.getElementById("refresh")?.addEventListener("click", () => {
-  void loadViews();
-});
 document.getElementById("filterProperty")?.addEventListener("change", () => {
   void loadViews();
+});
+
+bindListChrome({
+  view,
+  onView: (next) => {
+    view = next;
+    sessionStorage.setItem(VIEW_KEY, view);
+    render();
+  },
+  onSearch: (value) => {
+    search = value;
+    render();
+  },
+  onSort: (value) => {
+    sortBy = value;
+    render();
+  }
 });
 
 void (async () => {

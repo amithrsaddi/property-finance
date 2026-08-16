@@ -1,46 +1,72 @@
-import { api, currentMonthValue, getUser, money, qs, statusClass, labelize } from "../lib.js";
+import { api, currentMonthValue, formatDateDmY, formatMonthYear, getUser, money, qs, labelize } from "../lib.js";
+import {
+  bindListChrome,
+  bindRowMenus,
+  matchesQuery,
+  renderDataList,
+  searchFieldHtml,
+  sortFieldHtml,
+  viewToggleHtml,
+  type ListViewMode
+} from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
+const VIEW_KEY = "pf-rent-view";
 const root = mountShell(
   "/rent.html",
   "Rent",
   "Track expected and received rental payments.",
   `<div class="actions">
     <button class="btn secondary" id="recurring-rent-btn" type="button">Recurring rent</button>
-    <button class="btn" id="add-rent-btn" type="button">Add Rent</button>
+    <button class="btn" id="add-rent-btn" type="button">+ Add Rent</button>
   </div>`
 );
 const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 let propertyOptions: Array<{ id: string; name: string; expectedMonthlyRent: number }> = [];
 let editingId: string | null = null;
+let cache: Array<Record<string, unknown>> = [];
+let search = "";
+let sortBy = "due";
+let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+let openMenuId: string | null = null;
 
 root.innerHTML = `
-  <section class="panel">
-    <div class="list-toolbar">
-      <div class="filters" style="margin:0;flex:1">
-        <div class="field">
-          <label>Period</label>
-          <select id="periodType">
-            <option value="month" selected>Month</option>
-            <option value="year">Year</option>
-          </select>
+  <section class="panel table-card">
+    <div class="table-toolbar">
+      <div class="table-toolbar-start">
+        <div class="table-filters">
+          <div class="field">
+            <label>Period</label>
+            <select id="periodType">
+              <option value="month" selected>Month</option>
+              <option value="year">Year</option>
+            </select>
+          </div>
+          <div class="field" id="month-filter-wrap">
+            <label>Month</label>
+            <input id="month" type="month" value="${currentMonthValue()}" />
+          </div>
+          <div class="field" id="year-filter-wrap" hidden>
+            <label>Year</label>
+            <input id="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" />
+          </div>
+          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
         </div>
-        <div class="field" id="month-filter-wrap">
-          <label>Month</label>
-          <input id="month" type="month" value="${currentMonthValue()}" />
-        </div>
-        <div class="field" id="year-filter-wrap" hidden>
-          <label>Year</label>
-          <input id="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" />
-        </div>
-        <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        <div class="actions" style="align-self:end"><button class="btn secondary" id="refresh" type="button">Refresh</button></div>
       </div>
-      <div class="status" id="status" style="margin:0;min-width:12rem" hidden></div>
+      <div class="table-toolbar-end">
+        ${sortFieldHtml([
+          { value: "due", label: "Due date" },
+          { value: "name", label: "Name" },
+          { value: "amount", label: "Amount" }
+        ])}
+        ${searchFieldHtml()}
+        ${viewToggleHtml(view)}
+      </div>
     </div>
-    <div id="totals" class="metrics"></div>
-    <div class="property-list" id="list"></div>
+    <div class="status" id="status" hidden></div>
+    <div id="totals" class="metrics table-metrics"></div>
+    <div id="list"></div>
   </section>
 
   <div class="modal-backdrop" id="rent-modal" hidden>
@@ -244,6 +270,95 @@ async function loadProperties(): Promise<void> {
   fillRecurringDefaults();
 }
 
+function visibleRows(): Array<Record<string, unknown>> {
+  const rows = cache.filter((row) =>
+    matchesQuery(row, search, ["property_name", "rental_period", "status", "notes"])
+  );
+  rows.sort((a, b) => {
+    if (sortBy === "name") {
+      return String(a.property_name || "").localeCompare(String(b.property_name || ""), "en-GB");
+    }
+    if (sortBy === "amount") {
+      return Number(b.expected_amount || 0) - Number(a.expected_amount || 0);
+    }
+    return String(a.expected_payment_date || "").localeCompare(String(b.expected_payment_date || ""));
+  });
+  return rows;
+}
+
+function renderList(): void {
+  const list = document.getElementById("list")!;
+  const rows = visibleRows();
+  list.innerHTML = renderDataList(
+    rows.map((row) => {
+      const status = normalizeStatus(String(row.status));
+      const id = String(row.id);
+      return {
+        id,
+        title: String(row.property_name || "Property"),
+        subtitle: `Period ${formatMonthYear(String(row.rental_period || ""))} · Due ${formatDateDmY(String(row.expected_payment_date || ""))}`,
+        href: row.property_id ? `/property.html?id=${row.property_id}` : undefined,
+        status,
+        statusLabel: displayStatus(status),
+        summaryTitle: `Expected ${money(Number(row.expected_amount), user.preferredCurrency)}`,
+        summarySub: `Received ${money(Number(row.amount_received), user.preferredCurrency)}`,
+        actions: `<button type="button" data-edit="${id}">Edit</button>${
+          status === "paid" ? "" : `<button type="button" data-mark-paid="${id}">Mark paid</button>`
+        }<button type="button" data-delete="${id}">Delete</button>`
+      };
+    }),
+    view,
+    "No rent records for this period.",
+    openMenuId
+  );
+  bindRowMenus(
+    list,
+    openMenuId,
+    (id) => {
+      openMenuId = id;
+    },
+    renderList
+  );
+  list.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = rows.find((item) => String(item.id) === String(button.dataset.edit));
+      if (!row) {
+        return;
+      }
+      openMenuId = null;
+      fillForm(row);
+      openModal("Edit rent");
+    });
+  });
+  list.querySelectorAll<HTMLButtonElement>("[data-mark-paid]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const row = rows.find((item) => String(item.id) === String(button.dataset.markPaid));
+      if (!row) {
+        return;
+      }
+      await api(`/rent/${row.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          amountReceived: row.expected_amount,
+          actualPaymentDate: new Date().toISOString().slice(0, 10),
+          status: "paid"
+        })
+      });
+      setStatus(document.getElementById("status"), "Rent marked as paid.", "success");
+      openMenuId = null;
+      await loadRent();
+    });
+  });
+  list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await api(`/rent/${button.dataset.delete}`, { method: "DELETE" });
+      setStatus(document.getElementById("status"), "Rent record deleted.", "success");
+      openMenuId = null;
+      await loadRent();
+    });
+  });
+}
+
 async function loadRent(): Promise<void> {
   const periodType = (document.getElementById("periodType") as HTMLSelectElement).value;
   const propertyId = (document.getElementById("filterProperty") as HTMLSelectElement).value;
@@ -260,78 +375,8 @@ async function loadRent(): Promise<void> {
     <div class="metric"><div class="label">Expected</div><div class="value">${money(data.totals.expected, user.preferredCurrency)}</div></div>
     <div class="metric"><div class="label">Received</div><div class="value">${money(data.totals.received, user.preferredCurrency)}</div></div>
   `;
-
-  const list = document.getElementById("list")!;
-  if (!data.rentPayments.length) {
-    list.innerHTML = `<p class="empty">No rent records for this period.</p>`;
-    return;
-  }
-
-  list.innerHTML = data.rentPayments
-    .map((r) => {
-      const status = normalizeStatus(String(r.status));
-      return `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <strong>${r.property_name}</strong>
-            <span class="badge ${statusClass(status)}">${displayStatus(status)}</span>
-          </div>
-          <div class="muted">Period ${r.rental_period} · Due ${r.expected_payment_date}</div>
-          <div class="property-row-meta">
-            <span>Expected ${money(Number(r.expected_amount), user.preferredCurrency)}</span>
-            <span>Received ${money(Number(r.amount_received), user.preferredCurrency)}</span>
-          </div>
-        </div>
-        <div class="property-row-actions actions">
-          <button class="btn ghost" data-edit="${r.id}" type="button">Edit</button>
-          ${
-            status === "paid"
-              ? ""
-              : `<button class="btn secondary" data-mark-paid="${r.id}" type="button">Mark paid</button>`
-          }
-          <button class="btn danger" data-delete="${r.id}" type="button">Delete</button>
-        </div>
-      </article>`;
-    })
-    .join("");
-
-  list.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const row = data.rentPayments.find((r) => String(r.id) === String(button.dataset.edit));
-      if (!row) {
-        return;
-      }
-      fillForm(row);
-      openModal("Edit rent");
-    });
-  });
-
-  list.querySelectorAll<HTMLButtonElement>("[data-mark-paid]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const row = data.rentPayments.find((r) => String(r.id) === String(button.dataset.markPaid));
-      if (!row) {
-        return;
-      }
-      await api(`/rent/${row.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          amountReceived: row.expected_amount,
-          actualPaymentDate: new Date().toISOString().slice(0, 10),
-          status: "paid"
-        })
-      });
-      setStatus(document.getElementById("status"), "Rent marked as paid.", "success");
-      await loadRent();
-    });
-  });
-
-  list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await api(`/rent/${button.dataset.delete}`, { method: "DELETE" });
-      setStatus(document.getElementById("status"), "Rent record deleted.", "success");
-      await loadRent();
-    });
-  });
+  cache = data.rentPayments;
+  renderList();
 }
 
 form.addEventListener("submit", async (event) => {
@@ -470,11 +515,17 @@ document.addEventListener("keydown", (event) => {
     closeModal();
   } else if (!recurringModal.hidden) {
     closeRecurringModal();
+  } else if (openMenuId) {
+    openMenuId = null;
+    renderList();
   }
 });
-
-document.getElementById("refresh")?.addEventListener("click", () => {
-  void loadRent();
+document.addEventListener("click", () => {
+  if (!openMenuId) {
+    return;
+  }
+  openMenuId = null;
+  renderList();
 });
 document.getElementById("filterProperty")?.addEventListener("change", () => {
   void loadRent();
@@ -498,6 +549,23 @@ document.getElementById("month")?.addEventListener("change", () => {
 });
 document.getElementById("year")?.addEventListener("change", () => {
   void loadRent();
+});
+
+bindListChrome({
+  view,
+  onView: (next) => {
+    view = next;
+    sessionStorage.setItem(VIEW_KEY, view);
+    renderList();
+  },
+  onSearch: (value) => {
+    search = value;
+    renderList();
+  },
+  onSort: (value) => {
+    sortBy = value;
+    renderList();
+  }
 });
 
 void (async () => {

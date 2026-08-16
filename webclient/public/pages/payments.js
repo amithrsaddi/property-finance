@@ -99,32 +99,209 @@ function setTheme(theme) {
   applyTheme(theme);
 }
 function qs(params) {
-  const search = new URLSearchParams();
+  const search2 = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== void 0 && value !== null && value !== "") {
-      search.set(key, String(value));
+      search2.set(key, String(value));
     }
   }
-  const result = search.toString();
+  const result = search2.toString();
   return result ? `?${result}` : "";
 }
-function statusClass(status) {
-  const map = {
-    paid: "ok",
-    upcoming: "info",
-    unpaid: "warn",
-    late: "warn",
-    overdue: "warn",
-    partially_paid: "warn",
-    partial: "warn",
-    missed: "bad",
-    active: "ok",
-    archived: "muted"
-  };
-  return map[status] || "info";
+function formatDateDmY(value) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!match) {
+    return raw || "-";
+  }
+  return `${match[3]}-${match[2]}-${match[1]}`;
 }
 function labelize(value) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// src/list-view.ts
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function initials(value) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) {
+    return "?";
+  }
+  return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+}
+function avatarTone(value) {
+  let hash = 0;
+  for (const char of value) {
+    hash = hash * 31 + char.charCodeAt(0) >>> 0;
+  }
+  return hash % 5;
+}
+function pillKind(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "paid" || value === "active" || value === "done") {
+    return "done";
+  }
+  if (value === "upcoming" || value === "partial" || value === "partially_paid" || value === "info") {
+    return "progress";
+  }
+  if (value === "archived" || value === "paused") {
+    return "paused";
+  }
+  if (value === "missed" || value === "overdue" || value === "unpaid" || value === "bad") {
+    return "bad";
+  }
+  return "warn";
+}
+function statusPill(status, label) {
+  const text = label || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return `<span class="pill ${pillKind(status)}">${escapeHtml(text)}</span>`;
+}
+function nameCell(title, subtitle, href) {
+  const heading = href ? `<a class="name-title" href="${escapeHtml(href)}">${escapeHtml(title)}</a>` : `<div class="name-title">${escapeHtml(title)}</div>`;
+  return `<div class="name-cell">
+    <span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>
+    <div>
+      ${heading}
+      <div class="name-sub">${escapeHtml(subtitle)}</div>
+    </div>
+  </div>`;
+}
+function summaryCell(title, subtitle) {
+  return `<div class="summary-cell">
+    <div class="name-title">${escapeHtml(title)}</div>
+    <div class="name-sub">${escapeHtml(subtitle)}</div>
+  </div>`;
+}
+function kebabMenu(id, open, itemsHtml) {
+  if (!itemsHtml.trim()) {
+    return "";
+  }
+  return `<div class="row-menu ${open ? "open" : ""}">
+    <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">\u22EF</button>
+    <div class="row-menu-pop"${open ? "" : " hidden"}>${itemsHtml}</div>
+  </div>`;
+}
+function viewToggleHtml(view2) {
+  return `<div class="view-toggle" role="group" aria-label="View">
+    <button class="view-btn${view2 === "list" ? " active" : ""}" data-view-mode="list" type="button" aria-label="List view" aria-pressed="${view2 === "list"}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
+    </button>
+    <button class="view-btn${view2 === "grid" ? " active" : ""}" data-view-mode="grid" type="button" aria-label="Grid view" aria-pressed="${view2 === "grid"}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+    </button>
+  </div>`;
+}
+function searchFieldHtml(id = "list-search") {
+  return `<label class="search-field">
+    <span class="sr-only">Search</span>
+    <input id="${id}" type="search" placeholder="Search" />
+    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>
+  </label>`;
+}
+function sortFieldHtml(options, id = "sort-by") {
+  return `<label class="sort-field">
+    <span>Sort by</span>
+    <select id="${id}">
+      ${options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join("")}
+    </select>
+  </label>`;
+}
+function renderDataList(rows, view2, empty, openMenuId2) {
+  if (!rows.length) {
+    return `<p class="empty">${empty}</p>`;
+  }
+  const hasActions = rows.some((row) => Boolean(row.actions));
+  const cells = (row) => {
+    const actions = kebabMenu(row.id, openMenuId2 === row.id, row.actions || "");
+    return {
+      name: nameCell(row.title, row.subtitle, row.href),
+      status: statusPill(row.status, row.statusLabel),
+      summary: summaryCell(row.summaryTitle, row.summarySub),
+      actions
+    };
+  };
+  if (view2 === "grid") {
+    return `<div class="property-grid">${rows.map((row) => {
+      const cell = cells(row);
+      return `<article class="property-card">
+          <div class="property-card-head">
+            ${cell.name}
+            ${hasActions ? cell.actions : ""}
+          </div>
+          <div class="property-card-meta">
+            ${cell.status}
+            ${cell.summary}
+          </div>
+        </article>`;
+    }).join("")}</div>`;
+  }
+  return `<div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Summary</th>
+          ${hasActions ? "<th>Action</th>" : ""}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row) => {
+    const cell = cells(row);
+    return `<tr>
+              <td>${cell.name}</td>
+              <td>${cell.status}</td>
+              <td>${cell.summary}</td>
+              ${hasActions ? `<td>${cell.actions}</td>` : ""}
+            </tr>`;
+  }).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+function bindListChrome(options) {
+  document.querySelectorAll("[data-view-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.viewMode === options.view);
+    button.setAttribute("aria-pressed", String(button.dataset.viewMode === options.view));
+    button.addEventListener("click", () => {
+      const next = button.dataset.viewMode === "grid" ? "grid" : "list";
+      document.querySelectorAll("[data-view-mode]").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.viewMode === next);
+        btn.setAttribute("aria-pressed", String(btn.dataset.viewMode === next));
+      });
+      options.onView(next);
+    });
+  });
+  document.getElementById(options.searchId || "list-search")?.addEventListener("input", (event) => {
+    options.onSearch(event.target.value);
+  });
+  if (options.onSort) {
+    document.getElementById(options.sortId || "sort-by")?.addEventListener("change", (event) => {
+      options.onSort(event.target.value);
+    });
+  }
+}
+function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
+  root2.querySelectorAll("[data-menu]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const id = String(button.dataset.menu);
+      setOpenMenuId(openMenuId2 === id ? null : id);
+      rerender();
+    });
+  });
+  root2.querySelectorAll(".row-menu-pop").forEach((pop) => {
+    pop.addEventListener("click", (event) => event.stopPropagation());
+  });
+}
+function matchesQuery(row, query, keys) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  return keys.some((key) => String(row[key] ?? "").toLowerCase().includes(needle));
 }
 
 // src/shell.ts
@@ -419,6 +596,7 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/payments.ts
+var VIEW_KEY = "pf-payments-view";
 var root = mountShell(
   "/payments.html",
   "Payments",
@@ -427,21 +605,31 @@ var root = mountShell(
 var user = getUser();
 var presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 root.innerHTML = `
-  <section class="panel">
-    <div class="list-toolbar">
-      <div class="filters" style="margin:0;flex:1">
-        <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        <div class="actions" style="align-self:end"><button class="btn secondary" id="refresh" type="button">Refresh</button></div>
+  <section class="panel table-card">
+    <div class="table-toolbar">
+      <div class="table-toolbar-start">
+        <div class="seg-tabs" id="view-tabs">
+          <button class="seg-tab active" data-view="upcoming" type="button">Upcoming</button>
+          <button class="seg-tab" data-view="current" type="button">Current</button>
+          <button class="seg-tab" data-view="past" type="button">Past</button>
+          <button class="seg-tab" data-view="mortgages" type="button">Mortgages</button>
+        </div>
+        <div class="table-filters">
+          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+        </div>
       </div>
-      <div class="status" id="status" style="margin:0;min-width:12rem" hidden></div>
+      <div class="table-toolbar-end">
+        ${sortFieldHtml([
+  { value: "due", label: "Due date" },
+  { value: "name", label: "Name" },
+  { value: "amount", label: "Amount" }
+])}
+        ${searchFieldHtml()}
+        ${viewToggleHtml(sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list")}
+      </div>
     </div>
-    <div class="tabs" id="view-tabs">
-      <button class="tab active" data-view="upcoming" type="button">Upcoming</button>
-      <button class="tab" data-view="current" type="button">Current</button>
-      <button class="tab" data-view="past" type="button">Past</button>
-      <button class="tab" data-view="mortgages" type="button">Mortgages</button>
-    </div>
-    <div class="property-list" id="content"></div>
+    <div class="status" id="status" hidden></div>
+    <div id="content"></div>
   </section>
 
   <div class="modal-backdrop" id="payment-modal" hidden>
@@ -480,6 +668,10 @@ root.innerHTML = `
 `;
 var views = null;
 var activeView = "upcoming";
+var search = "";
+var sortBy = "due";
+var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+var openMenuId = null;
 var paymentModal = document.getElementById("payment-modal");
 var paymentForm = document.getElementById("payment-form");
 function openBackdrop(el) {
@@ -519,75 +711,89 @@ async function loadViews() {
   views = await api(`/mortgages/payments/views${qs({ propertyId })}`);
   render();
 }
+function sortRows(rows, keys) {
+  const filtered = rows.filter((row) => matchesQuery(row, search, keys));
+  filtered.sort((a, b) => {
+    if (sortBy === "name") {
+      return String(a.property_name || "").localeCompare(String(b.property_name || ""), "en-GB");
+    }
+    if (sortBy === "amount") {
+      const aAmount = Number(a.expected_amount ?? a.outstanding_balance ?? 0);
+      const bAmount = Number(b.expected_amount ?? b.outstanding_balance ?? 0);
+      return bAmount - aAmount;
+    }
+    return String(a.due_date || a.fixed_rate_expiry || "").localeCompare(
+      String(b.due_date || b.fixed_rate_expiry || "")
+    );
+  });
+  return filtered;
+}
 function render() {
   if (!views) {
     return;
   }
-  document.querySelectorAll("#view-tabs .tab").forEach((el) => {
+  document.querySelectorAll("#view-tabs .seg-tab").forEach((el) => {
     el.classList.toggle("active", el.dataset.view === activeView);
   });
   const content = document.getElementById("content");
   if (activeView === "mortgages") {
-    content.innerHTML = mortgageList(views.activeMortgages);
+    const rows2 = sortRows(views.activeMortgages, ["property_name", "lender", "status"]);
+    content.innerHTML = renderDataList(
+      rows2.map((m) => ({
+        id: String(m.id || m._id || m.property_name),
+        title: String(m.property_name || "Property"),
+        subtitle: String(m.lender || "Lender"),
+        href: m.property_id ? `/property.html?id=${m.property_id}` : void 0,
+        status: "active",
+        statusLabel: "Active",
+        summaryTitle: `Balance ${money(Number(m.outstanding_balance), user.preferredCurrency)}`,
+        summarySub: `Rate ${m.interest_rate}% \xB7 Monthly ${money(Number(m.monthly_repayment), user.preferredCurrency)}`
+      })),
+      view,
+      `No active mortgages. Add one from <a href="/rates.html">Rates</a>.`,
+      null
+    );
     return;
   }
-  const rows = views[activeView];
-  content.innerHTML = paymentList(rows);
+  const source = views[activeView];
+  const rows = sortRows(source, ["property_name", "lender", "status", "notes"]);
+  content.innerHTML = renderDataList(
+    rows.map((r) => {
+      const id = String(r.id || r._id);
+      const status = String(r.status || "upcoming");
+      return {
+        id,
+        title: String(r.property_name || "Property"),
+        subtitle: `${r.lender || "Lender"} \xB7 Due ${formatDateDmY(String(r.due_date || ""))}`,
+        href: r.property_id ? `/property.html?id=${r.property_id}` : void 0,
+        status,
+        statusLabel: labelize(status),
+        summaryTitle: `Expected ${money(Number(r.expected_amount), user.preferredCurrency)}`,
+        summarySub: `Paid ${r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "-"}${r.paid_date ? ` \xB7 ${formatDateDmY(String(r.paid_date))}` : ""}`,
+        actions: `<button type="button" data-edit="${id}" data-mode="edit">Edit</button>${status === "paid" ? "" : `<button type="button" data-edit="${id}" data-mode="pay">Mark paid</button>`}`
+      };
+    }),
+    view,
+    "No payments in this view.",
+    openMenuId
+  );
+  bindRowMenus(
+    content,
+    openMenuId,
+    (id) => {
+      openMenuId = id;
+    },
+    render
+  );
   content.querySelectorAll("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => {
       const row = rows.find((r) => String(r.id || r._id) === String(button.dataset.edit));
       if (row) {
+        openMenuId = null;
         openPaymentEditor(row, button.dataset.mode === "pay");
       }
     });
   });
-}
-function paymentList(rows) {
-  if (!rows.length) {
-    return `<p class="empty">No payments in this view.</p>`;
-  }
-  return rows.map(
-    (r) => `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <strong>${r.property_name}</strong>
-            <span class="badge ${statusClass(String(r.status))}">${labelize(String(r.status))}</span>
-          </div>
-          <div class="muted">${r.lender} \xB7 Due ${r.due_date}</div>
-          <div class="property-row-meta">
-            <span>Expected ${money(Number(r.expected_amount), user.preferredCurrency)}</span>
-            <span>Paid ${r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "-"}</span>
-            <span>Paid date ${r.paid_date || "-"}</span>
-          </div>
-        </div>
-        <div class="property-row-actions actions">
-          <button class="btn ghost" data-edit="${r.id || r._id}" data-mode="edit" type="button">Edit</button>
-          ${r.status === "paid" ? "" : `<button class="btn secondary" data-edit="${r.id || r._id}" data-mode="pay" type="button">Mark paid</button>`}
-        </div>
-      </article>`
-  ).join("");
-}
-function mortgageList(rows) {
-  if (!rows.length) {
-    return `<p class="empty">No active mortgages. Add one from <a href="/rates.html">Rates</a>.</p>`;
-  }
-  return rows.map(
-    (m) => `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <strong>${m.property_name}</strong>
-            <span class="badge ok">Active</span>
-          </div>
-          <div class="muted">${m.lender}</div>
-          <div class="property-row-meta">
-            <span>Balance ${money(Number(m.outstanding_balance), user.preferredCurrency)}</span>
-            <span>Rate ${m.interest_rate}%</span>
-            <span>Monthly ${money(Number(m.monthly_repayment), user.preferredCurrency)}</span>
-            <span>Fixed expiry ${m.fixed_rate_expiry || "-"}</span>
-          </div>
-        </div>
-      </article>`
-  ).join("");
 }
 function formStatusEl() {
   return document.getElementById("payment-form-status");
@@ -670,20 +876,44 @@ paymentModal.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !paymentModal.hidden) {
     closeBackdrop(paymentModal);
+  } else if (event.key === "Escape" && openMenuId) {
+    openMenuId = null;
+    render();
   }
+});
+document.addEventListener("click", () => {
+  if (!openMenuId) {
+    return;
+  }
+  openMenuId = null;
+  render();
 });
 document.getElementById("view-tabs")?.addEventListener("click", (event) => {
   const target = event.target;
   if (target.dataset.view === "upcoming" || target.dataset.view === "current" || target.dataset.view === "past" || target.dataset.view === "mortgages") {
     activeView = target.dataset.view;
+    openMenuId = null;
     render();
   }
 });
-document.getElementById("refresh")?.addEventListener("click", () => {
-  void loadViews();
-});
 document.getElementById("filterProperty")?.addEventListener("change", () => {
   void loadViews();
+});
+bindListChrome({
+  view,
+  onView: (next) => {
+    view = next;
+    sessionStorage.setItem(VIEW_KEY, view);
+    render();
+  },
+  onSearch: (value) => {
+    search = value;
+    render();
+  },
+  onSort: (value) => {
+    sortBy = value;
+    render();
+  }
 });
 void (async () => {
   await loadProperties();

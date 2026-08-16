@@ -1,31 +1,58 @@
-import { api, currentMonthValue, getUser, money, qs, statusClass, labelize } from "../lib.js";
+import { api, currentMonthValue, formatDateDmY, getUser, money, qs, labelize } from "../lib.js";
+import {
+  bindListChrome,
+  bindRowMenus,
+  matchesQuery,
+  renderDataList,
+  searchFieldHtml,
+  sortFieldHtml,
+  viewToggleHtml,
+  type ListViewMode
+} from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
+const VIEW_KEY = "pf-expenses-view";
 const root = mountShell(
   "/expenses.html",
   "Expenses",
   "Property expenses and portfolio-level additional costs.",
-  `<button class="btn" id="add-expense-btn" type="button">Add Expense</button>`
+  `<button class="btn" id="add-expense-btn" type="button">+ Add Expense</button>`
 );
 const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
+let cache: Array<Record<string, unknown>> = [];
+let search = "";
+let sortBy = "date";
+let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+let openMenuId: string | null = null;
+let scope: "property" | "general" = "property";
 
 root.innerHTML = `
-  <section class="panel">
-    <div class="tabs" id="scope-tabs">
-      <button class="tab active" data-scope="property" type="button">Property expenses</button>
-      <button class="tab" data-scope="general" type="button">Additional expenses</button>
-    </div>
-    <div class="list-toolbar">
-      <div class="filters" style="margin:0;flex:1">
-        <div class="field"><label>Month</label><input id="month" type="month" value="${currentMonthValue()}" /></div>
-        <div class="field" id="filter-property-wrap"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        <div class="actions" style="align-self:end"><button class="btn secondary" id="refresh" type="button">Refresh</button></div>
+  <section class="panel table-card">
+    <div class="table-toolbar">
+      <div class="table-toolbar-start">
+        <div class="seg-tabs" id="scope-tabs">
+          <button class="seg-tab active" data-scope="property" type="button">Property expenses</button>
+          <button class="seg-tab" data-scope="general" type="button">Additional expenses</button>
+        </div>
+        <div class="table-filters">
+          <div class="field"><label>Month</label><input id="month" type="month" value="${currentMonthValue()}" /></div>
+          <div class="field" id="filter-property-wrap"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+        </div>
       </div>
-      <div class="status" id="status" style="margin:0;min-width:12rem" hidden></div>
+      <div class="table-toolbar-end">
+        ${sortFieldHtml([
+          { value: "date", label: "Date" },
+          { value: "name", label: "Name" },
+          { value: "amount", label: "Amount" }
+        ])}
+        ${searchFieldHtml()}
+        ${viewToggleHtml(view)}
+      </div>
     </div>
-    <div id="totals" class="metrics"></div>
-    <div class="property-list" id="list"></div>
+    <div class="status" id="status" hidden></div>
+    <div id="totals" class="metrics table-metrics"></div>
+    <div id="list"></div>
   </section>
 
   <div class="modal-backdrop" id="expense-modal" hidden>
@@ -76,7 +103,6 @@ root.innerHTML = `
   </div>
 `;
 
-let scope: "property" | "general" = "property";
 const modal = document.getElementById("expense-modal") as HTMLDivElement;
 const form = document.getElementById("expense-form") as HTMLFormElement;
 
@@ -118,7 +144,7 @@ async function loadProperties(): Promise<void> {
 }
 
 function syncScopeUi(): void {
-  document.querySelectorAll("#scope-tabs .tab").forEach((el) => {
+  document.querySelectorAll("#scope-tabs .seg-tab").forEach((el) => {
     el.classList.toggle("active", (el as HTMLElement).dataset.scope === scope);
   });
   document.getElementById("expense-form-title")!.textContent =
@@ -127,6 +153,64 @@ function syncScopeUi(): void {
     scope === "property" ? "block" : "none";
   (document.getElementById("filter-property-wrap") as HTMLElement).style.display =
     scope === "property" ? "block" : "none";
+}
+
+function visibleRows(): Array<Record<string, unknown>> {
+  const rows = cache.filter((row) =>
+    matchesQuery(row, search, ["category", "property_name", "description", "payment_status", "notes"])
+  );
+  rows.sort((a, b) => {
+    if (sortBy === "name") {
+      return String(a.category || "").localeCompare(String(b.category || ""), "en-GB");
+    }
+    if (sortBy === "amount") {
+      return Number(b.amount || 0) - Number(a.amount || 0);
+    }
+    return String(a.expense_date || "").localeCompare(String(b.expense_date || ""));
+  });
+  return rows;
+}
+
+function renderList(): void {
+  const list = document.getElementById("list")!;
+  const rows = visibleRows();
+  list.innerHTML = renderDataList(
+    rows.map((e) => {
+      const id = String(e.id);
+      const status = String(e.payment_status || "upcoming");
+      const place = scope === "property" ? String(e.property_name || "Property") : "General / Portfolio";
+      return {
+        id,
+        title: String(e.category || "Expense"),
+        subtitle: e.description ? `${place} · ${e.description}` : place,
+        href: scope === "property" && e.property_id ? `/property.html?id=${e.property_id}` : undefined,
+        status,
+        statusLabel: labelize(status),
+        summaryTitle: money(Number(e.amount), user.preferredCurrency),
+        summarySub: `${formatDateDmY(String(e.expense_date || ""))} · ${labelize(String(e.frequency || ""))}`,
+        actions: `<button type="button" data-delete="${id}">Delete</button>`
+      };
+    }),
+    view,
+    "No expenses for this period.",
+    openMenuId
+  );
+  bindRowMenus(
+    list,
+    openMenuId,
+    (id) => {
+      openMenuId = id;
+    },
+    renderList
+  );
+  list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await api(`/expenses/${button.dataset.delete}`, { method: "DELETE" });
+      setStatus(document.getElementById("status"), "Expense deleted.", "success");
+      openMenuId = null;
+      await loadExpenses();
+    });
+  });
 }
 
 async function loadExpenses(): Promise<void> {
@@ -143,48 +227,15 @@ async function loadExpenses(): Promise<void> {
   document.getElementById("totals")!.innerHTML = `
     <div class="metric"><div class="label">Total</div><div class="value">${money(data.totals.amount, user.preferredCurrency)}</div></div>
   `;
-
-  const list = document.getElementById("list")!;
-  if (!data.expenses.length) {
-    list.innerHTML = `<p class="empty">No expenses for this period.</p>`;
-    return;
-  }
-
-  list.innerHTML = data.expenses
-    .map(
-      (e) => `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <strong>${e.category}</strong>
-            <span class="badge ${statusClass(String(e.payment_status))}">${labelize(String(e.payment_status))}</span>
-          </div>
-          <div class="muted">${scope === "property" ? e.property_name : "General / Portfolio"}${e.description ? ` · ${e.description}` : ""}</div>
-          <div class="property-row-meta">
-            <span>${e.expense_date}</span>
-            <span>${money(Number(e.amount), user.preferredCurrency)}</span>
-            <span>${labelize(String(e.frequency))}</span>
-          </div>
-        </div>
-        <div class="property-row-actions actions">
-          <button class="btn danger" data-delete="${e.id}" type="button">Delete</button>
-        </div>
-      </article>`
-    )
-    .join("");
-
-  list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await api(`/expenses/${button.dataset.delete}`, { method: "DELETE" });
-      setStatus(document.getElementById("status"), "Expense deleted.", "success");
-      await loadExpenses();
-    });
-  });
+  cache = data.expenses;
+  renderList();
 }
 
 document.getElementById("scope-tabs")?.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
   if (target.dataset.scope === "property" || target.dataset.scope === "general") {
     scope = target.dataset.scope;
+    openMenuId = null;
     syncScopeUi();
     void loadExpenses();
   }
@@ -233,16 +284,40 @@ modal.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !modal.hidden) {
     closeModal();
+  } else if (event.key === "Escape" && openMenuId) {
+    openMenuId = null;
+    renderList();
   }
 });
-document.getElementById("refresh")?.addEventListener("click", () => {
-  void loadExpenses();
+document.addEventListener("click", () => {
+  if (!openMenuId) {
+    return;
+  }
+  openMenuId = null;
+  renderList();
 });
 document.getElementById("filterProperty")?.addEventListener("change", () => {
   void loadExpenses();
 });
 document.getElementById("month")?.addEventListener("change", () => {
   void loadExpenses();
+});
+
+bindListChrome({
+  view,
+  onView: (next) => {
+    view = next;
+    sessionStorage.setItem(VIEW_KEY, view);
+    renderList();
+  },
+  onSearch: (value) => {
+    search = value;
+    renderList();
+  },
+  onSort: (value) => {
+    sortBy = value;
+    renderList();
+  }
 });
 
 syncScopeUi();

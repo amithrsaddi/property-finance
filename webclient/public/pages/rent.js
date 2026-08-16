@@ -99,36 +99,231 @@ function setTheme(theme) {
   applyTheme(theme);
 }
 function qs(params) {
-  const search = new URLSearchParams();
+  const search2 = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== void 0 && value !== null && value !== "") {
-      search.set(key, String(value));
+      search2.set(key, String(value));
     }
   }
-  const result = search.toString();
+  const result = search2.toString();
   return result ? `?${result}` : "";
 }
 function currentMonthValue() {
   const now = /* @__PURE__ */ new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
-function statusClass(status) {
-  const map = {
-    paid: "ok",
-    upcoming: "info",
-    unpaid: "warn",
-    late: "warn",
-    overdue: "warn",
-    partially_paid: "warn",
-    partial: "warn",
-    missed: "bad",
-    active: "ok",
-    archived: "muted"
-  };
-  return map[status] || "info";
+function formatMonthYear(value) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})/.exec(raw);
+  if (!match) {
+    return raw || "-";
+  }
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  if (!Number.isFinite(year) || monthIndex < 0 || monthIndex > 11) {
+    return raw;
+  }
+  const label = new Date(Date.UTC(year, monthIndex, 1)).toLocaleString("en-GB", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC"
+  });
+  return label;
+}
+function formatDateDmY(value) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!match) {
+    return raw || "-";
+  }
+  return `${match[3]}-${match[2]}-${match[1]}`;
 }
 function labelize(value) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// src/list-view.ts
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function initials(value) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) {
+    return "?";
+  }
+  return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+}
+function avatarTone(value) {
+  let hash = 0;
+  for (const char of value) {
+    hash = hash * 31 + char.charCodeAt(0) >>> 0;
+  }
+  return hash % 5;
+}
+function pillKind(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "paid" || value === "active" || value === "done") {
+    return "done";
+  }
+  if (value === "upcoming" || value === "partial" || value === "partially_paid" || value === "info") {
+    return "progress";
+  }
+  if (value === "archived" || value === "paused") {
+    return "paused";
+  }
+  if (value === "missed" || value === "overdue" || value === "unpaid" || value === "bad") {
+    return "bad";
+  }
+  return "warn";
+}
+function statusPill(status, label) {
+  const text = label || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return `<span class="pill ${pillKind(status)}">${escapeHtml(text)}</span>`;
+}
+function nameCell(title, subtitle, href) {
+  const heading = href ? `<a class="name-title" href="${escapeHtml(href)}">${escapeHtml(title)}</a>` : `<div class="name-title">${escapeHtml(title)}</div>`;
+  return `<div class="name-cell">
+    <span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>
+    <div>
+      ${heading}
+      <div class="name-sub">${escapeHtml(subtitle)}</div>
+    </div>
+  </div>`;
+}
+function summaryCell(title, subtitle) {
+  return `<div class="summary-cell">
+    <div class="name-title">${escapeHtml(title)}</div>
+    <div class="name-sub">${escapeHtml(subtitle)}</div>
+  </div>`;
+}
+function kebabMenu(id, open, itemsHtml) {
+  if (!itemsHtml.trim()) {
+    return "";
+  }
+  return `<div class="row-menu ${open ? "open" : ""}">
+    <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">\u22EF</button>
+    <div class="row-menu-pop"${open ? "" : " hidden"}>${itemsHtml}</div>
+  </div>`;
+}
+function viewToggleHtml(view2) {
+  return `<div class="view-toggle" role="group" aria-label="View">
+    <button class="view-btn${view2 === "list" ? " active" : ""}" data-view-mode="list" type="button" aria-label="List view" aria-pressed="${view2 === "list"}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
+    </button>
+    <button class="view-btn${view2 === "grid" ? " active" : ""}" data-view-mode="grid" type="button" aria-label="Grid view" aria-pressed="${view2 === "grid"}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+    </button>
+  </div>`;
+}
+function searchFieldHtml(id = "list-search") {
+  return `<label class="search-field">
+    <span class="sr-only">Search</span>
+    <input id="${id}" type="search" placeholder="Search" />
+    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>
+  </label>`;
+}
+function sortFieldHtml(options, id = "sort-by") {
+  return `<label class="sort-field">
+    <span>Sort by</span>
+    <select id="${id}">
+      ${options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join("")}
+    </select>
+  </label>`;
+}
+function renderDataList(rows, view2, empty, openMenuId2) {
+  if (!rows.length) {
+    return `<p class="empty">${empty}</p>`;
+  }
+  const hasActions = rows.some((row) => Boolean(row.actions));
+  const cells = (row) => {
+    const actions = kebabMenu(row.id, openMenuId2 === row.id, row.actions || "");
+    return {
+      name: nameCell(row.title, row.subtitle, row.href),
+      status: statusPill(row.status, row.statusLabel),
+      summary: summaryCell(row.summaryTitle, row.summarySub),
+      actions
+    };
+  };
+  if (view2 === "grid") {
+    return `<div class="property-grid">${rows.map((row) => {
+      const cell = cells(row);
+      return `<article class="property-card">
+          <div class="property-card-head">
+            ${cell.name}
+            ${hasActions ? cell.actions : ""}
+          </div>
+          <div class="property-card-meta">
+            ${cell.status}
+            ${cell.summary}
+          </div>
+        </article>`;
+    }).join("")}</div>`;
+  }
+  return `<div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Summary</th>
+          ${hasActions ? "<th>Action</th>" : ""}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row) => {
+    const cell = cells(row);
+    return `<tr>
+              <td>${cell.name}</td>
+              <td>${cell.status}</td>
+              <td>${cell.summary}</td>
+              ${hasActions ? `<td>${cell.actions}</td>` : ""}
+            </tr>`;
+  }).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+function bindListChrome(options) {
+  document.querySelectorAll("[data-view-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.viewMode === options.view);
+    button.setAttribute("aria-pressed", String(button.dataset.viewMode === options.view));
+    button.addEventListener("click", () => {
+      const next = button.dataset.viewMode === "grid" ? "grid" : "list";
+      document.querySelectorAll("[data-view-mode]").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.viewMode === next);
+        btn.setAttribute("aria-pressed", String(btn.dataset.viewMode === next));
+      });
+      options.onView(next);
+    });
+  });
+  document.getElementById(options.searchId || "list-search")?.addEventListener("input", (event) => {
+    options.onSearch(event.target.value);
+  });
+  if (options.onSort) {
+    document.getElementById(options.sortId || "sort-by")?.addEventListener("change", (event) => {
+      options.onSort(event.target.value);
+    });
+  }
+}
+function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
+  root2.querySelectorAll("[data-menu]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const id = String(button.dataset.menu);
+      setOpenMenuId(openMenuId2 === id ? null : id);
+      rerender();
+    });
+  });
+  root2.querySelectorAll(".row-menu-pop").forEach((pop) => {
+    pop.addEventListener("click", (event) => event.stopPropagation());
+  });
+}
+function matchesQuery(row, query, keys) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  return keys.some((key) => String(row[key] ?? "").toLowerCase().includes(needle));
 }
 
 // src/shell.ts
@@ -423,45 +618,61 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/rent.ts
+var VIEW_KEY = "pf-rent-view";
 var root = mountShell(
   "/rent.html",
   "Rent",
   "Track expected and received rental payments.",
   `<div class="actions">
     <button class="btn secondary" id="recurring-rent-btn" type="button">Recurring rent</button>
-    <button class="btn" id="add-rent-btn" type="button">Add Rent</button>
+    <button class="btn" id="add-rent-btn" type="button">+ Add Rent</button>
   </div>`
 );
 var user = getUser();
 var presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 var propertyOptions = [];
 var editingId = null;
+var cache = [];
+var search = "";
+var sortBy = "due";
+var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+var openMenuId = null;
 root.innerHTML = `
-  <section class="panel">
-    <div class="list-toolbar">
-      <div class="filters" style="margin:0;flex:1">
-        <div class="field">
-          <label>Period</label>
-          <select id="periodType">
-            <option value="month" selected>Month</option>
-            <option value="year">Year</option>
-          </select>
+  <section class="panel table-card">
+    <div class="table-toolbar">
+      <div class="table-toolbar-start">
+        <div class="table-filters">
+          <div class="field">
+            <label>Period</label>
+            <select id="periodType">
+              <option value="month" selected>Month</option>
+              <option value="year">Year</option>
+            </select>
+          </div>
+          <div class="field" id="month-filter-wrap">
+            <label>Month</label>
+            <input id="month" type="month" value="${currentMonthValue()}" />
+          </div>
+          <div class="field" id="year-filter-wrap" hidden>
+            <label>Year</label>
+            <input id="year" type="number" min="2000" max="2100" value="${(/* @__PURE__ */ new Date()).getFullYear()}" />
+          </div>
+          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
         </div>
-        <div class="field" id="month-filter-wrap">
-          <label>Month</label>
-          <input id="month" type="month" value="${currentMonthValue()}" />
-        </div>
-        <div class="field" id="year-filter-wrap" hidden>
-          <label>Year</label>
-          <input id="year" type="number" min="2000" max="2100" value="${(/* @__PURE__ */ new Date()).getFullYear()}" />
-        </div>
-        <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        <div class="actions" style="align-self:end"><button class="btn secondary" id="refresh" type="button">Refresh</button></div>
       </div>
-      <div class="status" id="status" style="margin:0;min-width:12rem" hidden></div>
+      <div class="table-toolbar-end">
+        ${sortFieldHtml([
+  { value: "due", label: "Due date" },
+  { value: "name", label: "Name" },
+  { value: "amount", label: "Amount" }
+])}
+        ${searchFieldHtml()}
+        ${viewToggleHtml(view)}
+      </div>
     </div>
-    <div id="totals" class="metrics"></div>
-    <div class="property-list" id="list"></div>
+    <div class="status" id="status" hidden></div>
+    <div id="totals" class="metrics table-metrics"></div>
+    <div id="list"></div>
   </section>
 
   <div class="modal-backdrop" id="rent-modal" hidden>
@@ -649,54 +860,66 @@ async function loadProperties() {
   }
   fillRecurringDefaults();
 }
-async function loadRent() {
-  const periodType = document.getElementById("periodType").value;
-  const propertyId = document.getElementById("filterProperty").value;
-  const query = periodType === "year" ? qs({ year: document.getElementById("year").value, propertyId }) : qs({ month: document.getElementById("month").value, propertyId });
-  const data = await api(`/rent${query}`);
-  document.getElementById("totals").innerHTML = `
-    <div class="metric"><div class="label">Expected</div><div class="value">${money(data.totals.expected, user.preferredCurrency)}</div></div>
-    <div class="metric"><div class="label">Received</div><div class="value">${money(data.totals.received, user.preferredCurrency)}</div></div>
-  `;
+function visibleRows() {
+  const rows = cache.filter(
+    (row) => matchesQuery(row, search, ["property_name", "rental_period", "status", "notes"])
+  );
+  rows.sort((a, b) => {
+    if (sortBy === "name") {
+      return String(a.property_name || "").localeCompare(String(b.property_name || ""), "en-GB");
+    }
+    if (sortBy === "amount") {
+      return Number(b.expected_amount || 0) - Number(a.expected_amount || 0);
+    }
+    return String(a.expected_payment_date || "").localeCompare(String(b.expected_payment_date || ""));
+  });
+  return rows;
+}
+function renderList() {
   const list = document.getElementById("list");
-  if (!data.rentPayments.length) {
-    list.innerHTML = `<p class="empty">No rent records for this period.</p>`;
-    return;
-  }
-  list.innerHTML = data.rentPayments.map((r) => {
-    const status = normalizeStatus(String(r.status));
-    return `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <strong>${r.property_name}</strong>
-            <span class="badge ${statusClass(status)}">${displayStatus(status)}</span>
-          </div>
-          <div class="muted">Period ${r.rental_period} \xB7 Due ${r.expected_payment_date}</div>
-          <div class="property-row-meta">
-            <span>Expected ${money(Number(r.expected_amount), user.preferredCurrency)}</span>
-            <span>Received ${money(Number(r.amount_received), user.preferredCurrency)}</span>
-          </div>
-        </div>
-        <div class="property-row-actions actions">
-          <button class="btn ghost" data-edit="${r.id}" type="button">Edit</button>
-          ${status === "paid" ? "" : `<button class="btn secondary" data-mark-paid="${r.id}" type="button">Mark paid</button>`}
-          <button class="btn danger" data-delete="${r.id}" type="button">Delete</button>
-        </div>
-      </article>`;
-  }).join("");
+  const rows = visibleRows();
+  list.innerHTML = renderDataList(
+    rows.map((row) => {
+      const status = normalizeStatus(String(row.status));
+      const id = String(row.id);
+      return {
+        id,
+        title: String(row.property_name || "Property"),
+        subtitle: `Period ${formatMonthYear(String(row.rental_period || ""))} \xB7 Due ${formatDateDmY(String(row.expected_payment_date || ""))}`,
+        href: row.property_id ? `/property.html?id=${row.property_id}` : void 0,
+        status,
+        statusLabel: displayStatus(status),
+        summaryTitle: `Expected ${money(Number(row.expected_amount), user.preferredCurrency)}`,
+        summarySub: `Received ${money(Number(row.amount_received), user.preferredCurrency)}`,
+        actions: `<button type="button" data-edit="${id}">Edit</button>${status === "paid" ? "" : `<button type="button" data-mark-paid="${id}">Mark paid</button>`}<button type="button" data-delete="${id}">Delete</button>`
+      };
+    }),
+    view,
+    "No rent records for this period.",
+    openMenuId
+  );
+  bindRowMenus(
+    list,
+    openMenuId,
+    (id) => {
+      openMenuId = id;
+    },
+    renderList
+  );
   list.querySelectorAll("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => {
-      const row = data.rentPayments.find((r) => String(r.id) === String(button.dataset.edit));
+      const row = rows.find((item) => String(item.id) === String(button.dataset.edit));
       if (!row) {
         return;
       }
+      openMenuId = null;
       fillForm(row);
       openModal("Edit rent");
     });
   });
   list.querySelectorAll("[data-mark-paid]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const row = data.rentPayments.find((r) => String(r.id) === String(button.dataset.markPaid));
+      const row = rows.find((item) => String(item.id) === String(button.dataset.markPaid));
       if (!row) {
         return;
       }
@@ -709,6 +932,7 @@ async function loadRent() {
         })
       });
       setStatus(document.getElementById("status"), "Rent marked as paid.", "success");
+      openMenuId = null;
       await loadRent();
     });
   });
@@ -716,9 +940,22 @@ async function loadRent() {
     button.addEventListener("click", async () => {
       await api(`/rent/${button.dataset.delete}`, { method: "DELETE" });
       setStatus(document.getElementById("status"), "Rent record deleted.", "success");
+      openMenuId = null;
       await loadRent();
     });
   });
+}
+async function loadRent() {
+  const periodType = document.getElementById("periodType").value;
+  const propertyId = document.getElementById("filterProperty").value;
+  const query = periodType === "year" ? qs({ year: document.getElementById("year").value, propertyId }) : qs({ month: document.getElementById("month").value, propertyId });
+  const data = await api(`/rent${query}`);
+  document.getElementById("totals").innerHTML = `
+    <div class="metric"><div class="label">Expected</div><div class="value">${money(data.totals.expected, user.preferredCurrency)}</div></div>
+    <div class="metric"><div class="label">Received</div><div class="value">${money(data.totals.received, user.preferredCurrency)}</div></div>
+  `;
+  cache = data.rentPayments;
+  renderList();
 }
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -840,10 +1077,17 @@ document.addEventListener("keydown", (event) => {
     closeModal();
   } else if (!recurringModal.hidden) {
     closeRecurringModal();
+  } else if (openMenuId) {
+    openMenuId = null;
+    renderList();
   }
 });
-document.getElementById("refresh")?.addEventListener("click", () => {
-  void loadRent();
+document.addEventListener("click", () => {
+  if (!openMenuId) {
+    return;
+  }
+  openMenuId = null;
+  renderList();
 });
 document.getElementById("filterProperty")?.addEventListener("change", () => {
   void loadRent();
@@ -865,6 +1109,22 @@ document.getElementById("month")?.addEventListener("change", () => {
 });
 document.getElementById("year")?.addEventListener("change", () => {
   void loadRent();
+});
+bindListChrome({
+  view,
+  onView: (next) => {
+    view = next;
+    sessionStorage.setItem(VIEW_KEY, view);
+    renderList();
+  },
+  onSearch: (value) => {
+    search = value;
+    renderList();
+  },
+  onSort: (value) => {
+    sortBy = value;
+    renderList();
+  }
 });
 void (async () => {
   syncPeriodFilterUi();

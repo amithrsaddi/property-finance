@@ -1,25 +1,70 @@
-import { api, getUser, money, qs, labelize } from "../lib.js";
+import { api, formatDateDmY, getUser, money, qs, labelize } from "../lib.js";
+import {
+  bindListChrome,
+  bindRowMenus,
+  matchesQuery,
+  renderDataList,
+  searchFieldHtml,
+  sortFieldHtml,
+  viewToggleHtml,
+  type ListViewMode
+} from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
+type MortgageRow = {
+  id: string;
+  property_id?: string;
+  property_name: string;
+  lender: string;
+  original_loan_amount: number;
+  outstanding_balance: number;
+  interest_rate: number;
+  mortgage_type: string;
+  monthly_repayment: number;
+  payment_day: number;
+  start_date: string;
+  end_date: string | null;
+  fixed_rate_expiry: string | null;
+  notes: string;
+  status: string;
+};
+
+const VIEW_KEY = "pf-rates-view";
 const root = mountShell(
   "/rates.html",
   "Rates",
   "Interest rates and fixed-rate expiry for your mortgages.",
-  `<button class="btn" id="add-mortgage-btn" type="button">Add Mortgage</button>`
+  `<button class="btn" id="add-mortgage-btn" type="button">+ Add Mortgage</button>`
 );
 const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
+let cache: MortgageRow[] = [];
+let search = "";
+let sortBy = "name";
+let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+let editingId: string | null = null;
+let openMenuId: string | null = null;
 
 root.innerHTML = `
-  <section class="panel">
-    <div class="list-toolbar">
-      <div class="filters" style="margin:0;flex:1">
-        <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        <div class="actions" style="align-self:end"><button class="btn secondary" id="refresh" type="button">Refresh</button></div>
+  <section class="panel table-card">
+    <div class="table-toolbar">
+      <div class="table-toolbar-start">
+        <div class="table-filters">
+          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+        </div>
       </div>
-      <div class="status" id="status" style="margin:0;min-width:12rem" hidden></div>
+      <div class="table-toolbar-end">
+        ${sortFieldHtml([
+          { value: "name", label: "Name" },
+          { value: "rate", label: "Rate" },
+          { value: "expiry", label: "Expiry" }
+        ])}
+        ${searchFieldHtml()}
+        ${viewToggleHtml(view)}
+      </div>
     </div>
-    <div class="property-list" id="content"></div>
+    <div class="status" id="status" hidden></div>
+    <div id="content"></div>
   </section>
 
   <div class="modal-backdrop" id="mortgage-modal" hidden>
@@ -59,22 +104,17 @@ root.innerHTML = `
   </div>
 `;
 
-type MortgageRow = {
-  id: string;
-  property_name: string;
-  lender: string;
-  interest_rate: number;
-  mortgage_type: string;
-  monthly_repayment: number;
-  outstanding_balance: number;
-  fixed_rate_expiry: string | null;
-  status: string;
-};
-
 const mortgageModal = document.getElementById("mortgage-modal") as HTMLDivElement;
 const mortgageForm = document.getElementById("mortgage-form") as HTMLFormElement;
 
-function openBackdrop(): void {
+function isoDate(value: unknown): string {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
+  return match ? match[1] : "";
+}
+
+function openBackdrop(title = "Add mortgage"): void {
+  document.getElementById("mortgage-form-title")!.textContent = title;
   mortgageModal.hidden = false;
   document.body.classList.add("modal-open");
 }
@@ -82,6 +122,31 @@ function openBackdrop(): void {
 function closeBackdrop(): void {
   mortgageModal.hidden = true;
   document.body.classList.remove("modal-open");
+  editingId = null;
+}
+
+function fillForm(row: MortgageRow): void {
+  editingId = String(row.id);
+  (document.getElementById("mortgagePropertyId") as HTMLSelectElement).value = String(row.property_id || "");
+  (mortgageForm.elements.namedItem("lender") as HTMLInputElement).value = String(row.lender || "");
+  (mortgageForm.elements.namedItem("originalLoanAmount") as HTMLInputElement).value = String(
+    row.original_loan_amount ?? ""
+  );
+  (mortgageForm.elements.namedItem("outstandingBalance") as HTMLInputElement).value = String(
+    row.outstanding_balance ?? ""
+  );
+  (mortgageForm.elements.namedItem("interestRate") as HTMLInputElement).value = String(row.interest_rate ?? "");
+  (mortgageForm.elements.namedItem("mortgageType") as HTMLSelectElement).value = String(
+    row.mortgage_type || "repayment"
+  );
+  (mortgageForm.elements.namedItem("monthlyRepayment") as HTMLInputElement).value = String(
+    row.monthly_repayment ?? ""
+  );
+  (mortgageForm.elements.namedItem("paymentDay") as HTMLInputElement).value = String(row.payment_day || 1);
+  (mortgageForm.elements.namedItem("startDate") as HTMLInputElement).value = isoDate(row.start_date);
+  (mortgageForm.elements.namedItem("endDate") as HTMLInputElement).value = isoDate(row.end_date);
+  (mortgageForm.elements.namedItem("fixedRateExpiry") as HTMLInputElement).value = isoDate(row.fixed_rate_expiry);
+  (mortgageForm.elements.namedItem("notes") as HTMLTextAreaElement).value = String(row.notes || "");
 }
 
 async function loadProperties(): Promise<void> {
@@ -110,51 +175,97 @@ function expiryLabel(value: string | null): string {
   }
   const expiry = new Date(`${value}T00:00:00.000Z`);
   const today = new Date();
-  const days = Math.round((expiry.getTime() - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 86400000);
+  const days = Math.round(
+    (expiry.getTime() - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 86400000
+  );
+  const formatted = formatDateDmY(value);
   if (days < 0) {
-    return `Expired ${value}`;
+    return `Expired ${formatted}`;
   }
   if (days === 0) {
-    return `Expires today (${value})`;
+    return `Expires today (${formatted})`;
   }
   if (days <= 90) {
-    return `Expires in ${days} days (${value})`;
+    return `Expires in ${days} days (${formatted})`;
   }
-  return `Fixed until ${value}`;
+  return `Fixed until ${formatted}`;
 }
 
-function renderRates(rows: MortgageRow[]): void {
+function visibleRows(): MortgageRow[] {
+  const rows = cache.filter((row) =>
+    matchesQuery(row as unknown as Record<string, unknown>, search, [
+      "property_name",
+      "lender",
+      "mortgage_type",
+      "status"
+    ])
+  );
+  rows.sort((a, b) => {
+    if (sortBy === "rate") {
+      return Number(b.interest_rate || 0) - Number(a.interest_rate || 0);
+    }
+    if (sortBy === "expiry") {
+      return String(a.fixed_rate_expiry || "9999").localeCompare(String(b.fixed_rate_expiry || "9999"));
+    }
+    return String(a.property_name || "").localeCompare(String(b.property_name || ""), "en-GB");
+  });
+  return rows;
+}
+
+function renderRates(): void {
   const content = document.getElementById("content")!;
-  if (!rows.length) {
-    content.innerHTML = `<p class="empty">No mortgage rates yet. Use Add Mortgage to create one.</p>`;
-    return;
-  }
-  content.innerHTML = rows
-    .map(
-      (m) => `<article class="property-row">
-        <div class="property-row-main">
-          <div class="property-row-title">
-            <strong>${m.property_name}</strong>
-            <span class="badge ok">${labelize(String(m.mortgage_type || "repayment"))}</span>
-          </div>
-          <div class="muted">${m.lender}</div>
-          <div class="property-row-meta">
-            <span>Rate ${m.interest_rate}%</span>
-            <span>Monthly ${money(Number(m.monthly_repayment), user.preferredCurrency)}</span>
-            <span>Balance ${money(Number(m.outstanding_balance), user.preferredCurrency)}</span>
-            <span>${expiryLabel(m.fixed_rate_expiry)}</span>
-          </div>
-        </div>
-      </article>`
-    )
-    .join("");
+  const rows = visibleRows();
+  content.innerHTML = renderDataList(
+    rows.map((m) => ({
+      id: String(m.id),
+      title: String(m.property_name || "Property"),
+      subtitle: String(m.lender || "Lender"),
+      href: m.property_id ? `/property.html?id=${m.property_id}` : undefined,
+      status: m.status === "active" ? "active" : String(m.mortgage_type || "repayment"),
+      statusLabel: labelize(String(m.mortgage_type || "repayment")),
+      summaryTitle: `${m.interest_rate}% · ${money(Number(m.monthly_repayment), user.preferredCurrency)} / mo`,
+      summarySub: expiryLabel(m.fixed_rate_expiry),
+      actions: `<button type="button" data-edit="${m.id}">Edit</button><button type="button" data-delete="${m.id}">Delete</button>`
+    })),
+    view,
+    "No mortgage rates yet. Use Add Mortgage to create one.",
+    openMenuId
+  );
+  bindRowMenus(
+    content,
+    openMenuId,
+    (id) => {
+      openMenuId = id;
+    },
+    renderRates
+  );
+  content.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = rows.find((item) => String(item.id) === String(button.dataset.edit));
+      if (!row) {
+        return;
+      }
+      openMenuId = null;
+      fillForm(row);
+      openBackdrop("Edit mortgage");
+    });
+  });
+  content.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await api(`/mortgages/${button.dataset.delete}`, { method: "DELETE" });
+      setStatus(document.getElementById("status"), "Mortgage deleted.", "success");
+      openMenuId = null;
+      await loadRates();
+    });
+  });
 }
 
 async function loadRates(): Promise<void> {
   const propertyId = (document.getElementById("filterProperty") as HTMLSelectElement).value;
   try {
     const data = await api<{ mortgages: MortgageRow[] }>(`/mortgages${qs({ propertyId })}`);
-    renderRates(data.mortgages.filter((m) => m.status === "active"));
+    cache = data.mortgages.filter((m) => m.status === "active");
+    renderRates();
     setStatus(document.getElementById("status"), "", "info");
   } catch (error) {
     setStatus(document.getElementById("status"), (error as Error).message, "error");
@@ -164,25 +275,28 @@ async function loadRates(): Promise<void> {
 mortgageForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(mortgageForm);
+  const payload = {
+    propertyId: String(formData.get("propertyId") || ""),
+    lender: String(formData.get("lender")),
+    originalLoanAmount: Number(formData.get("originalLoanAmount")),
+    outstandingBalance: Number(formData.get("outstandingBalance")),
+    interestRate: Number(formData.get("interestRate")),
+    mortgageType: String(formData.get("mortgageType")),
+    monthlyRepayment: Number(formData.get("monthlyRepayment")),
+    paymentDay: Number(formData.get("paymentDay")),
+    startDate: String(formData.get("startDate")),
+    endDate: String(formData.get("endDate") || "") || null,
+    fixedRateExpiry: String(formData.get("fixedRateExpiry") || "") || null,
+    notes: String(formData.get("notes") || "")
+  };
   try {
-    await api("/mortgages", {
-      method: "POST",
-      body: JSON.stringify({
-        propertyId: String(formData.get("propertyId") || ""),
-        lender: String(formData.get("lender")),
-        originalLoanAmount: Number(formData.get("originalLoanAmount")),
-        outstandingBalance: Number(formData.get("outstandingBalance")),
-        interestRate: Number(formData.get("interestRate")),
-        mortgageType: String(formData.get("mortgageType")),
-        monthlyRepayment: Number(formData.get("monthlyRepayment")),
-        paymentDay: Number(formData.get("paymentDay")),
-        startDate: String(formData.get("startDate")),
-        endDate: String(formData.get("endDate") || "") || null,
-        fixedRateExpiry: String(formData.get("fixedRateExpiry") || "") || null,
-        notes: String(formData.get("notes") || "")
-      })
-    });
-    setStatus(document.getElementById("status"), "Mortgage created.", "success");
+    if (editingId) {
+      await api(`/mortgages/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
+      setStatus(document.getElementById("status"), "Mortgage updated.", "success");
+    } else {
+      await api("/mortgages", { method: "POST", body: JSON.stringify(payload) });
+      setStatus(document.getElementById("status"), "Mortgage created.", "success");
+    }
     closeBackdrop();
     mortgageForm.reset();
     (mortgageForm.elements.namedItem("paymentDay") as HTMLInputElement).value = "1";
@@ -193,12 +307,13 @@ mortgageForm.addEventListener("submit", async (event) => {
 });
 
 document.getElementById("add-mortgage-btn")?.addEventListener("click", () => {
+  editingId = null;
   mortgageForm.reset();
   (mortgageForm.elements.namedItem("paymentDay") as HTMLInputElement).value = "1";
   if (presetPropertyId) {
     (document.getElementById("mortgagePropertyId") as HTMLSelectElement).value = presetPropertyId;
   }
-  openBackdrop();
+  openBackdrop("Add mortgage");
 });
 document.getElementById("close-mortgage-modal")?.addEventListener("click", () => closeBackdrop());
 document.getElementById("cancel-mortgage-modal")?.addEventListener("click", () => closeBackdrop());
@@ -210,13 +325,37 @@ mortgageModal.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !mortgageModal.hidden) {
     closeBackdrop();
+  } else if (event.key === "Escape" && openMenuId) {
+    openMenuId = null;
+    renderRates();
   }
 });
-document.getElementById("refresh")?.addEventListener("click", () => {
-  void loadRates();
+document.addEventListener("click", () => {
+  if (!openMenuId) {
+    return;
+  }
+  openMenuId = null;
+  renderRates();
 });
 document.getElementById("filterProperty")?.addEventListener("change", () => {
   void loadRates();
+});
+
+bindListChrome({
+  view,
+  onView: (next) => {
+    view = next;
+    sessionStorage.setItem(VIEW_KEY, view);
+    renderRates();
+  },
+  onSearch: (value) => {
+    search = value;
+    renderRates();
+  },
+  onSort: (value) => {
+    sortBy = value;
+    renderRates();
+  }
 });
 
 void (async () => {
