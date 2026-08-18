@@ -7,6 +7,7 @@ import rentRoutes from "./routes/rent.js";
 import mortgageRoutes from "./routes/mortgages.js";
 import expenseRoutes from "./routes/expenses.js";
 import documentRoutes from "./routes/documents.js";
+import folderRoutes from "./routes/folders.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import reportRoutes from "./routes/reports.js";
 
@@ -63,6 +64,7 @@ export function createApp(): express.Express {
   app.use("/rent", rentRoutes);
   app.use("/mortgages", mortgageRoutes);
   app.use("/expenses", expenseRoutes);
+  app.use("/folders", folderRoutes);
   app.use("/documents", documentRoutes);
   app.use("/dashboard", dashboardRoutes);
   app.use("/reports", reportRoutes);

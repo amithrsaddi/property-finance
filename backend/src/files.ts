@@ -29,9 +29,35 @@ const ALLOWED_EXT = new Set([
   ".csv"
 ]);
 
+const MIME_BY_EXT: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".txt": "text/plain",
+  ".csv": "text/csv"
+};
+
 export function extensionOf(filename: string): string {
   const match = /\.[a-z0-9]+$/i.exec(filename.trim());
   return match ? match[0].toLowerCase() : "";
+}
+
+export function guessMime(filename: string, mimeType?: string | null): string {
+  const mime = String(mimeType || "")
+    .toLowerCase()
+    .split(";")[0]
+    .trim();
+  if (mime && mime !== "application/octet-stream") {
+    return mime;
+  }
+  return MIME_BY_EXT[extensionOf(filename)] || mime || "application/octet-stream";
 }
 
 export function decodeFileData(raw: unknown): Buffer | null {

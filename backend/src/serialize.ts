@@ -119,19 +119,39 @@ export function mapExpense(
 
 export function mapDocument(
   doc: Record<string, unknown> & { _id?: { toString(): string } },
-  propertyName?: string | null
+  extras: { propertyName?: string | null; folderName?: string | null } = {}
 ) {
   return {
     id: idOf(doc),
     user_id: String(doc.userId ?? ""),
     property_id: doc.propertyId ? String(doc.propertyId) : null,
-    property_name: propertyName ?? null,
+    property_name: extras.propertyName ?? null,
+    folder_id: doc.folderId ? String(doc.folderId) : null,
+    folder_name: extras.folderName ?? null,
     scope: doc.scope === "property" ? "property" : "general",
     name: doc.name,
+    valid_from: doc.validFrom ?? null,
     valid_until: doc.validUntil ?? null,
+    important: Boolean(doc.important),
     original_filename: doc.originalFilename ?? "",
     mime_type: doc.mimeType ?? "application/octet-stream",
     file_size: Number(doc.fileSize || 0),
+    created_at: doc.createdAt ?? null,
+    updated_at: doc.updatedAt ?? null
+  };
+}
+
+export function mapFolder(
+  doc: Record<string, unknown> & { _id?: { toString(): string } },
+  extras: { fileCount?: number; folderCount?: number } = {}
+) {
+  return {
+    id: idOf(doc),
+    user_id: String(doc.userId ?? ""),
+    parent_id: doc.parentId ? String(doc.parentId) : null,
+    name: doc.name,
+    file_count: extras.fileCount ?? 0,
+    folder_count: extras.folderCount ?? 0,
     created_at: doc.createdAt ?? null,
     updated_at: doc.updatedAt ?? null
   };

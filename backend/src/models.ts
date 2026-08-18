@@ -89,6 +89,15 @@ const mortgagePaymentSchema = new Schema(
 
 mortgagePaymentSchema.index({ mortgageId: 1, dueDate: 1 }, { unique: true });
 
+const documentFolderSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    parentId: { type: Schema.Types.ObjectId, ref: "DocumentFolder", default: null, index: true },
+    name: { type: String, required: true, trim: true }
+  },
+  { timestamps: true }
+);
+
 const expenseSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -110,9 +119,12 @@ const documentSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     propertyId: { type: Schema.Types.ObjectId, ref: "Property", default: null, index: true },
+    folderId: { type: Schema.Types.ObjectId, ref: "DocumentFolder", default: null, index: true },
     scope: { type: String, default: "general", index: true },
     name: { type: String, required: true, trim: true },
+    validFrom: { type: String, default: null },
     validUntil: { type: String, default: null },
+    important: { type: Boolean, default: false, index: true },
     originalFilename: { type: String, default: "" },
     mimeType: { type: String, default: "application/octet-stream" },
     fileSize: { type: Number, default: 0 },
@@ -131,6 +143,9 @@ export type MortgagePaymentDoc = InferSchemaType<typeof mortgagePaymentSchema> &
   _id: mongoose.Types.ObjectId;
 };
 export type ExpenseDoc = InferSchemaType<typeof expenseSchema> & { _id: mongoose.Types.ObjectId };
+export type DocumentFolderDoc = InferSchemaType<typeof documentFolderSchema> & {
+  _id: mongoose.Types.ObjectId;
+};
 export type DocumentDoc = InferSchemaType<typeof documentSchema> & { _id: mongoose.Types.ObjectId };
 
 export const User: Model<UserDoc> =
@@ -149,6 +164,9 @@ export const MortgagePayment: Model<MortgagePaymentDoc> =
   mongoose.model<MortgagePaymentDoc>("MortgagePayment", mortgagePaymentSchema);
 export const Expense: Model<ExpenseDoc> =
   mongoose.models.Expense || mongoose.model<ExpenseDoc>("Expense", expenseSchema);
+export const DocumentFolder: Model<DocumentFolderDoc> =
+  mongoose.models.DocumentFolder ||
+  mongoose.model<DocumentFolderDoc>("DocumentFolder", documentFolderSchema);
 export const PropertyDocument: Model<DocumentDoc> =
   mongoose.models.PropertyDocument ||
   mongoose.model<DocumentDoc>("PropertyDocument", documentSchema);
