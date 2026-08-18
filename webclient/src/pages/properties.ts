@@ -1,4 +1,5 @@
 import { api, getUser, money, qs, labelize } from "../lib.js";
+import { positionOpenRowMenu } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
 const VIEW_KEY = "pf-properties-view";
@@ -271,7 +272,7 @@ function renderList(rows: Array<Record<string, unknown>>): string {
           <th>Name</th>
           <th>Status</th>
           <th>Summary</th>
-          <th>Action</th>
+          <th class="col-actions">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -281,7 +282,7 @@ function renderList(rows: Array<Record<string, unknown>>): string {
               <td>${nameCell(row)}</td>
               <td>${statusBadge(String(row.status))}</td>
               <td>${summaryCell(row)}</td>
-              <td>${actionMenu(row)}</td>
+              <td class="col-actions">${actionMenu(row)}</td>
             </tr>`
           )
           .join("")}
@@ -356,6 +357,9 @@ function bindListActions(rows: Array<Record<string, unknown>>): void {
       }
     });
   });
+  if (openMenuId) {
+    requestAnimationFrame(() => positionOpenRowMenu(list));
+  }
 }
 
 function render(): void {

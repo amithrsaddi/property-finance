@@ -22,6 +22,7 @@ root.innerHTML = `
       <button class="tab" data-tab="rent" type="button">Rent</button>
       <button class="tab" data-tab="mortgage" type="button">Mortgage</button>
       <button class="tab" data-tab="expenses" type="button">Expenses</button>
+      <button class="tab" data-tab="documents" type="button">Documents</button>
     </div>
     <div class="status" id="status">Loading property…</div>
   </section>
@@ -100,8 +101,14 @@ function renderTab(tab: string): void {
     return;
   }
 
-  content.innerHTML = `<div class="panel"><h2>Expenses</h2>${expenseTable(cache.upcoming.expenses)}
-    <p class="muted">Manage expenses on the <a href="/expenses.html?propertyId=${propertyId}">Expenses</a> page.</p></div>`;
+  if (tab === "expenses") {
+    content.innerHTML = `<div class="panel"><h2>Expenses</h2>${expenseTable(cache.upcoming.expenses)}
+      <p class="muted">Manage expenses on the <a href="/expenses.html?propertyId=${propertyId}">Expenses</a> page.</p></div>`;
+    return;
+  }
+
+  content.innerHTML = `<div class="panel"><h2>Documents</h2>
+    <p class="muted">Store tenancy agreements, EPCs, and other files for this property on the <a href="/documents.html?propertyId=${propertyId}">Documents</a> page.</p></div>`;
 }
 
 function table(rows: Array<Record<string, unknown>>, upcoming: boolean): string {

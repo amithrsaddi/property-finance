@@ -157,7 +157,7 @@ export function renderDataList(rows: ListRow[], view: ListViewMode, empty: strin
           <th>Name</th>
           <th>Status</th>
           <th>Summary</th>
-          ${hasActions ? "<th>Action</th>" : ""}
+          ${hasActions ? `<th class="col-actions">Actions</th>` : ""}
         </tr>
       </thead>
       <tbody>
@@ -168,7 +168,7 @@ export function renderDataList(rows: ListRow[], view: ListViewMode, empty: strin
               <td>${cell.name}</td>
               <td>${cell.status}</td>
               <td>${cell.summary}</td>
-              ${hasActions ? `<td>${cell.actions}</td>` : ""}
+              ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
             </tr>`;
           })
           .join("")}
@@ -207,6 +207,30 @@ export function bindListChrome(options: {
   }
 }
 
+export function positionOpenRowMenu(root: ParentNode = document): void {
+  const menu = root.querySelector<HTMLElement>(".row-menu.open");
+  const button = menu?.querySelector<HTMLElement>(".kebab-btn");
+  const pop = menu?.querySelector<HTMLElement>(".row-menu-pop");
+  if (!menu || !button || !pop) {
+    return;
+  }
+  pop.classList.add("fixed-pop");
+  const rect = button.getBoundingClientRect();
+  const width = Math.max(pop.offsetWidth, 136);
+  const height = pop.offsetHeight || 160;
+  let left = rect.right - width;
+  left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+  pop.style.left = `${left}px`;
+  pop.style.right = "auto";
+  if (window.innerHeight - rect.bottom < height + 12) {
+    pop.style.top = "auto";
+    pop.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+  } else {
+    pop.style.bottom = "auto";
+    pop.style.top = `${rect.bottom + 6}px`;
+  }
+}
+
 export function bindRowMenus(
   root: HTMLElement,
   openMenuId: string | null,
@@ -224,6 +248,9 @@ export function bindRowMenus(
   root.querySelectorAll(".row-menu-pop").forEach((pop) => {
     pop.addEventListener("click", (event) => event.stopPropagation());
   });
+  if (openMenuId) {
+    requestAnimationFrame(() => positionOpenRowMenu(root));
+  }
 }
 
 export function matchesQuery(row: Record<string, unknown>, query: string, keys: string[]): boolean {

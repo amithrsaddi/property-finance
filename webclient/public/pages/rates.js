@@ -42,7 +42,7 @@ function requireSession() {
 }
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  if (!headers.has("Content-Type") && options.body) {
+  if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (options.auth !== false) {
@@ -244,7 +244,7 @@ function renderDataList(rows, view2, empty, openMenuId2) {
           <th>Name</th>
           <th>Status</th>
           <th>Summary</th>
-          ${hasActions ? "<th>Action</th>" : ""}
+          ${hasActions ? `<th class="col-actions">Actions</th>` : ""}
         </tr>
       </thead>
       <tbody>
@@ -254,7 +254,7 @@ function renderDataList(rows, view2, empty, openMenuId2) {
               <td>${cell.name}</td>
               <td>${cell.status}</td>
               <td>${cell.summary}</td>
-              ${hasActions ? `<td>${cell.actions}</td>` : ""}
+              ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
             </tr>`;
   }).join("")}
       </tbody>
@@ -283,6 +283,29 @@ function bindListChrome(options) {
     });
   }
 }
+function positionOpenRowMenu(root2 = document) {
+  const menu = root2.querySelector(".row-menu.open");
+  const button = menu?.querySelector(".kebab-btn");
+  const pop = menu?.querySelector(".row-menu-pop");
+  if (!menu || !button || !pop) {
+    return;
+  }
+  pop.classList.add("fixed-pop");
+  const rect = button.getBoundingClientRect();
+  const width = Math.max(pop.offsetWidth, 136);
+  const height = pop.offsetHeight || 160;
+  let left = rect.right - width;
+  left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+  pop.style.left = `${left}px`;
+  pop.style.right = "auto";
+  if (window.innerHeight - rect.bottom < height + 12) {
+    pop.style.top = "auto";
+    pop.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+  } else {
+    pop.style.bottom = "auto";
+    pop.style.top = `${rect.bottom + 6}px`;
+  }
+}
 function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
   root2.querySelectorAll("[data-menu]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -295,6 +318,9 @@ function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
   root2.querySelectorAll(".row-menu-pop").forEach((pop) => {
     pop.addEventListener("click", (event) => event.stopPropagation());
   });
+  if (openMenuId2) {
+    requestAnimationFrame(() => positionOpenRowMenu(root2));
+  }
 }
 function matchesQuery(row, query, keys) {
   const needle = query.trim().toLowerCase();
@@ -348,6 +374,9 @@ var ICON_PAYMENTS = icon(
 var ICON_RATES = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M18.5 5.5 5.5 18.5"/><circle cx="7" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="17" cy="17" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/>'
 );
+var ICON_DOCUMENTS = icon(
+  '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M7 3.5h7.2L19.5 9v11.5H7z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M14 3.5V9h5.5M9.5 13h6M9.5 16.5h6"/>'
+);
 var ICON_EXPENSES = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M6 3.5v17l1.6-1 1.6 1 1.6-1 1.6 1 1.6-1 1.6 1 1.6-1V3.5l-1.6 1-1.6-1-1.6 1-1.6-1-1.6 1-1.6-1-1.6 1z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M9 8.5h6M9 12h6M9 15.5h4"/>'
 );
@@ -367,6 +396,7 @@ var NAV = [
     ]
   },
   { href: "/expenses.html", label: "Expenses", icon: ICON_EXPENSES },
+  { href: "/documents.html", label: "Documents", icon: ICON_DOCUMENTS },
   { href: "/reports.html", label: "Reports", icon: ICON_REPORTS }
 ];
 function isMortgagesPath(path) {

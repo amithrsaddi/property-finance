@@ -78,7 +78,7 @@ export async function api<T>(
   options: RequestInit & { auth?: boolean } = {}
 ): Promise<T> {
   const headers = new Headers(options.headers || {});
-  if (!headers.has("Content-Type") && options.body) {
+  if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (options.auth !== false) {
@@ -106,6 +106,30 @@ export async function api<T>(
   }
 
   return data;
+}
+
+export async function apiFile(path: string): Promise<{ blob: Blob; filename: string; mimeType: string }> {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(`${apiBase()}${path}`, { headers });
+  if (response.status === 401) {
+    clearSession();
+    window.location.href = "/";
+    throw new Error("Session expired.");
+  }
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string };
+    throw new Error(data.message || "Could not download the file.");
+  }
+  const blob = await response.blob();
+  const mimeType = response.headers.get("content-type") || blob.type || "application/octet-stream";
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(disposition);
+  const filename = match ? decodeURIComponent(match[1]!.replace(/"/g, "")) : "document";
+  return { blob, filename, mimeType };
 }
 
 export function getDecimalPrecision(): number {

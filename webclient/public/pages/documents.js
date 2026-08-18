@@ -32,13 +32,13 @@ function clearSession() {
 }
 function requireSession() {
   const token = getToken();
-  const user2 = getUser();
-  if (!token || !user2) {
+  const user = getUser();
+  if (!token || !user) {
     clearSession();
     window.location.href = "/";
     throw new Error("Not authenticated");
   }
-  return user2;
+  return user;
 }
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -66,26 +66,28 @@ async function api(path, options = {}) {
   }
   return data;
 }
-function getDecimalPrecision() {
-  const n = Number(getUser()?.decimalPrecision);
-  if (!Number.isFinite(n)) {
-    return 2;
+async function apiFile(path) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
-  return Math.min(4, Math.max(0, Math.round(n)));
-}
-function money(amount, currency = getUser()?.preferredCurrency || "GBP", precision = getDecimalPrecision()) {
-  const n = Number(precision);
-  const digits = Number.isFinite(n) ? Math.min(4, Math.max(0, Math.round(n))) : 2;
-  try {
-    return new Intl.NumberFormat(void 0, {
-      style: "currency",
-      currency,
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits
-    }).format(amount || 0);
-  } catch {
-    return `${currency} ${(amount || 0).toFixed(digits)}`;
+  const response = await fetch(`${apiBase()}${path}`, { headers });
+  if (response.status === 401) {
+    clearSession();
+    window.location.href = "/";
+    throw new Error("Session expired.");
   }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "Could not download the file.");
+  }
+  const blob = await response.blob();
+  const mimeType = response.headers.get("content-type") || blob.type || "application/octet-stream";
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(disposition);
+  const filename = match ? decodeURIComponent(match[1].replace(/"/g, "")) : "document";
+  return { blob, filename, mimeType };
 }
 function getTheme() {
   return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
@@ -115,9 +117,6 @@ function formatDateDmY(value) {
     return raw || "-";
   }
   return `${match[3]}-${match[2]}-${match[1]}`;
-}
-function labelize(value) {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 // src/list-view.ts
@@ -435,7 +434,7 @@ function renderNav(activePath) {
 function mountShell(activePath, title, subtitle = "", actionsHtml = "") {
   requireSession();
   applyTheme();
-  const user2 = getUser();
+  const user = getUser();
   document.body.innerHTML = `
     <div class="app-shell" id="app-shell">
       <div class="nav-backdrop" id="nav-backdrop"></div>
@@ -466,7 +465,7 @@ function mountShell(activePath, title, subtitle = "", actionsHtml = "") {
           </div>
           <a href="/profile.html" class="sidebar-profile${activePath === "/profile.html" ? " active" : ""}">
             <span class="profile-avatar">${ICON_USER}</span>
-            <span class="sidebar-profile-name">${user2.name}</span>
+            <span class="sidebar-profile-name">${user.name}</span>
           </a>
           <div class="sidebar-foot-actions">
             <button class="logout-link" id="logout-btn" type="button">
@@ -625,290 +624,378 @@ function setStatus(el, message, type = "info") {
   el.textContent = message;
 }
 
-// src/pages/payments.ts
-var VIEW_KEY = "pf-payments-view";
+// src/pages/documents.ts
+var VIEW_KEY = "pf-documents-view";
+var MAX_FILE_BYTES = 4 * 1024 * 1024;
+var ACCEPT = ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
 var root = mountShell(
-  "/payments.html",
-  "Payments",
-  "Upcoming, current, and past mortgage payments."
+  "/documents.html",
+  "Documents",
+  "Store files against a property or in a general folder.",
+  `<button class="btn" id="add-document-btn" type="button">+ Add Document</button>`
 );
-var user = getUser();
 var presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
+var cache = [];
+var search = "";
+var sortBy = "newest";
+var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+var openMenuId = null;
+var scope = presetPropertyId ? "property" : "all";
+var editingId = null;
+var selectedFile = null;
 root.innerHTML = `
   <section class="panel table-card">
     <div class="table-toolbar">
       <div class="table-toolbar-start">
-        <div class="seg-tabs" id="view-tabs">
-          <button class="seg-tab active" data-view="upcoming" type="button">Upcoming</button>
-          <button class="seg-tab" data-view="current" type="button">Current</button>
-          <button class="seg-tab" data-view="past" type="button">Past</button>
-          <button class="seg-tab" data-view="mortgages" type="button">Mortgages</button>
+        <div class="seg-tabs" id="scope-tabs">
+          <button class="seg-tab${scope === "all" ? " active" : ""}" data-scope="all" type="button">All documents</button>
+          <button class="seg-tab${scope === "property" ? " active" : ""}" data-scope="property" type="button">Property</button>
+          <button class="seg-tab${String(scope) === "general" ? " active" : ""}" data-scope="general" type="button">General</button>
         </div>
         <div class="table-filters">
-          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+          <div class="field" id="filter-property-wrap"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
         </div>
       </div>
       <div class="table-toolbar-end">
         ${sortFieldHtml([
-  { value: "due", label: "Due date" },
+  { value: "newest", label: "Newest" },
   { value: "name", label: "Name" },
-  { value: "amount", label: "Amount" }
+  { value: "expiry", label: "Validity" }
 ])}
         ${searchFieldHtml()}
-        ${viewToggleHtml(sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list")}
+        ${viewToggleHtml(view)}
       </div>
     </div>
     <div class="status" id="status" hidden></div>
-    <div id="content"></div>
+    <div id="list"></div>
   </section>
 
-  <div class="modal-backdrop" id="payment-modal" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="payment-form-title">
+  <div class="modal-backdrop" id="document-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="document-form-title">
       <div class="modal-header">
-        <h2 id="payment-form-title">Edit payment</h2>
-        <button class="modal-close" id="close-payment-modal" type="button" aria-label="Close">\xD7</button>
+        <h2 id="document-form-title">Add document</h2>
+        <button class="modal-close" id="close-document-modal" type="button" aria-label="Close">\xD7</button>
       </div>
-      <form id="payment-form" class="stack">
-        <input type="hidden" name="id" />
+      <form id="document-form" class="stack">
         <div class="form-grid">
-          <div class="field"><label>Property</label><input name="propertyName" disabled /></div>
-          <div class="field"><label>Lender</label><input name="lender" disabled /></div>
-          <div class="field"><label>Due date</label><input name="dueDate" type="date" disabled /></div>
-          <div class="field"><label>Expected amount</label><input name="expectedAmount" type="number" step="0.01" required /></div>
-          <div class="field"><label>Amount paid</label><input name="amountPaid" type="number" step="0.01" /></div>
-          <div class="field"><label>Paid date</label><input name="paidDate" type="date" /></div>
-          <div class="field"><label>Status</label>
-            <select name="status">
-              <option value="upcoming">Upcoming</option>
-              <option value="paid">Paid</option>
-              <option value="partial">Partial</option>
-              <option value="overdue">Overdue</option>
+          <div class="field"><label>Document name</label><input name="name" required placeholder="e.g. Tenancy agreement" /></div>
+          <div class="field">
+            <label>Linked to</label>
+            <select name="propertyId" id="documentPropertyId">
+              <option value="">General</option>
             </select>
           </div>
-          <div class="field" style="grid-column:1/-1"><label>Notes</label><textarea name="notes"></textarea></div>
+          <div class="field"><label>Validity <span class="muted">(optional)</span></label><input name="validUntil" type="date" /></div>
+          <div class="field" style="grid-column:1/-1">
+            <label id="file-label">Upload a document</label>
+            <label class="file-drop">
+              <input id="document-file" type="file" accept="${ACCEPT}" />
+              <span class="file-drop-title">Choose file</span>
+              <span class="file-drop-sub" id="file-drop-sub">PDF, image, Word, or Excel \xB7 up to 4 MB</span>
+            </label>
+          </div>
         </div>
-        <div class="status" id="payment-form-status" hidden></div>
         <div class="modal-actions">
-          <button class="btn secondary" id="cancel-payment-modal" type="button">Cancel</button>
-          <button class="btn" type="submit">Save payment</button>
+          <button class="btn secondary" id="cancel-document-modal" type="button">Cancel</button>
+          <button class="btn" type="submit">Save document</button>
         </div>
       </form>
     </div>
   </div>
 `;
-var views = null;
-var activeView = "upcoming";
-var search = "";
-var sortBy = "due";
-var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
-var openMenuId = null;
-var paymentModal = document.getElementById("payment-modal");
-var paymentForm = document.getElementById("payment-form");
-function openBackdrop(el) {
-  el.hidden = false;
+var modal = document.getElementById("document-modal");
+var form = document.getElementById("document-form");
+var fileInput = document.getElementById("document-file");
+function todayIso() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function formatBytes(bytes) {
+  if (!bytes) {
+    return "0 B";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function fileKind(mime, filename) {
+  const type = `${mime} ${filename}`.toLowerCase();
+  if (type.includes("pdf")) {
+    return "PDF";
+  }
+  if (type.includes("image") || /\.(jpe?g|png|gif|webp)$/i.test(filename)) {
+    return "Image";
+  }
+  if (type.includes("word") || /\.docx?$/i.test(filename)) {
+    return "Word";
+  }
+  if (type.includes("excel") || type.includes("spreadsheet") || /\.xlsx?$/i.test(filename)) {
+    return "Excel";
+  }
+  return "File";
+}
+function validity(row) {
+  const value = String(row.valid_until || "");
+  if (!value) {
+    return { status: "upcoming", label: "No expiry" };
+  }
+  if (value < todayIso()) {
+    return { status: "overdue", label: `Expired ${formatDateDmY(value)}` };
+  }
+  return { status: "active", label: `Valid until ${formatDateDmY(value)}` };
+}
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.readAsDataURL(file);
+  });
+}
+function syncScopeUi() {
+  document.querySelectorAll("#scope-tabs .seg-tab").forEach((el) => {
+    el.classList.toggle("active", el.dataset.scope === scope);
+  });
+  document.getElementById("filter-property-wrap").style.display = scope === "general" ? "none" : "block";
+}
+function setFileHint(text) {
+  document.getElementById("file-drop-sub").textContent = text;
+}
+function openModal(title) {
+  document.getElementById("document-form-title").textContent = title;
+  document.getElementById("file-label").textContent = editingId ? "Replace file (optional)" : "Upload a document";
+  modal.hidden = false;
   document.body.classList.add("modal-open");
 }
-function closeBackdrop(el) {
-  el.hidden = true;
-  if (paymentModal.hidden) {
-    document.body.classList.remove("modal-open");
+function closeModal() {
+  modal.hidden = true;
+  document.body.classList.remove("modal-open");
+  editingId = null;
+  selectedFile = null;
+  form.reset();
+  fileInput.value = "";
+  setFileHint("PDF, image, Word, or Excel \xB7 up to 4 MB");
+  if (presetPropertyId) {
+    document.getElementById("documentPropertyId").value = presetPropertyId;
   }
-}
-function field(form, name) {
-  const el = form.querySelector(`[name="${name}"]`);
-  if (!el) {
-    throw new Error(`Missing form field: ${name}`);
-  }
-  return el;
 }
 async function loadProperties() {
   const data = await api(
     `/properties${qs({ status: "active" })}`
   );
   const filter = document.getElementById("filterProperty");
+  const formSelect = document.getElementById("documentPropertyId");
   for (const property of data.properties) {
     const option = document.createElement("option");
     option.value = String(property.id);
     option.textContent = property.name;
-    filter.appendChild(option);
+    filter.appendChild(option.cloneNode(true));
+    formSelect.appendChild(option);
   }
   if (presetPropertyId) {
     filter.value = presetPropertyId;
+    formSelect.value = presetPropertyId;
   }
 }
-async function loadViews() {
-  const propertyId = document.getElementById("filterProperty").value;
-  views = await api(`/mortgages/payments/views${qs({ propertyId })}`);
-  render();
-}
-function sortRows(rows, keys) {
-  const filtered = rows.filter((row) => matchesQuery(row, search, keys));
-  filtered.sort((a, b) => {
+function visibleRows() {
+  const rows = cache.filter(
+    (row) => matchesQuery(row, search, ["name", "original_filename", "property_name", "scope", "mime_type"])
+  );
+  rows.sort((a, b) => {
     if (sortBy === "name") {
-      return String(a.property_name || "").localeCompare(String(b.property_name || ""), "en-GB");
+      return String(a.name || "").localeCompare(String(b.name || ""), "en-GB");
     }
-    if (sortBy === "amount") {
-      const aAmount = Number(a.expected_amount ?? a.outstanding_balance ?? 0);
-      const bAmount = Number(b.expected_amount ?? b.outstanding_balance ?? 0);
-      return bAmount - aAmount;
+    if (sortBy === "expiry") {
+      return String(a.valid_until || "9999").localeCompare(String(b.valid_until || "9999"));
     }
-    return String(a.due_date || a.fixed_rate_expiry || "").localeCompare(
-      String(b.due_date || b.fixed_rate_expiry || "")
-    );
+    return String(b.created_at || "").localeCompare(String(a.created_at || ""));
   });
-  return filtered;
+  return rows;
 }
-function render() {
-  if (!views) {
-    return;
+async function openOrDownload(id, download) {
+  const file = await apiFile(`/documents/${id}/file`);
+  const url = URL.createObjectURL(file.blob);
+  if (download) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.filename;
+    link.click();
+  } else {
+    window.open(url, "_blank", "noopener");
   }
-  document.querySelectorAll("#view-tabs .seg-tab").forEach((el) => {
-    el.classList.toggle("active", el.dataset.view === activeView);
-  });
-  const content = document.getElementById("content");
-  if (activeView === "mortgages") {
-    const rows2 = sortRows(views.activeMortgages, ["property_name", "lender", "status"]);
-    content.innerHTML = renderDataList(
-      rows2.map((m) => ({
-        id: String(m.id || m._id || m.property_name),
-        title: String(m.property_name || "Property"),
-        subtitle: String(m.lender || "Lender"),
-        href: m.property_id ? `/property.html?id=${m.property_id}` : void 0,
-        status: "active",
-        statusLabel: "Active",
-        summaryTitle: `Balance ${money(Number(m.outstanding_balance), user.preferredCurrency)}`,
-        summarySub: `Rate ${m.interest_rate}% \xB7 Monthly ${money(Number(m.monthly_repayment), user.preferredCurrency)}`
-      })),
-      view,
-      `No active mortgages. Add one from <a href="/rates.html">Rates</a>.`,
-      null
-    );
-    return;
-  }
-  const source = views[activeView];
-  const rows = sortRows(source, ["property_name", "lender", "status", "notes"]);
-  content.innerHTML = renderDataList(
-    rows.map((r) => {
-      const id = String(r.id || r._id);
-      const status = String(r.status || "upcoming");
+  window.setTimeout(() => URL.revokeObjectURL(url), 6e4);
+}
+function renderList() {
+  const list = document.getElementById("list");
+  const rows = visibleRows();
+  list.innerHTML = renderDataList(
+    rows.map((row) => {
+      const id = String(row.id);
+      const kind = fileKind(String(row.mime_type || ""), String(row.original_filename || ""));
+      const place = row.scope === "property" ? String(row.property_name || "Property") : "General";
+      const valid = validity(row);
       return {
         id,
-        title: String(r.property_name || "Property"),
-        subtitle: `${r.lender || "Lender"} \xB7 Due ${formatDateDmY(String(r.due_date || ""))}`,
-        href: r.property_id ? `/property.html?id=${r.property_id}` : void 0,
-        status,
-        statusLabel: labelize(status),
-        summaryTitle: `Expected ${money(Number(r.expected_amount), user.preferredCurrency)}`,
-        summarySub: `Paid ${r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "-"}${r.paid_date ? ` \xB7 ${formatDateDmY(String(r.paid_date))}` : ""}`,
-        actions: `<button type="button" data-edit="${id}" data-mode="edit">Edit</button>${status === "paid" ? "" : `<button type="button" data-edit="${id}" data-mode="pay">Mark paid</button>`}`
+        title: String(row.name || "Document"),
+        subtitle: `${row.original_filename || "File"} \xB7 ${formatBytes(Number(row.file_size || 0))}`,
+        href: row.property_id ? `/property.html?id=${row.property_id}` : void 0,
+        status: valid.status,
+        statusLabel: valid.label,
+        summaryTitle: place,
+        summarySub: kind,
+        actions: `<button type="button" data-open="${id}">Open</button><button type="button" data-download="${id}">Download</button><button type="button" data-edit="${id}">Edit</button><button type="button" data-delete="${id}">Delete</button>`
       };
     }),
     view,
-    "No payments in this view.",
+    "No documents yet. Use + Add Document to upload one.",
     openMenuId
   );
   bindRowMenus(
-    content,
+    list,
     openMenuId,
     (id) => {
       openMenuId = id;
     },
-    render
+    renderList
   );
-  content.querySelectorAll("[data-edit]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const row = rows.find((r) => String(r.id || r._id) === String(button.dataset.edit));
-      if (row) {
-        openMenuId = null;
-        openPaymentEditor(row, button.dataset.mode === "pay");
+  list.querySelectorAll("[data-open]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await openOrDownload(String(button.dataset.open), false);
+      } catch (error) {
+        setStatus(document.getElementById("status"), error.message, "error");
       }
     });
   });
+  list.querySelectorAll("[data-download]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await openOrDownload(String(button.dataset.download), true);
+      } catch (error) {
+        setStatus(document.getElementById("status"), error.message, "error");
+      }
+    });
+  });
+  list.querySelectorAll("[data-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = rows.find((item) => String(item.id) === String(button.dataset.edit));
+      if (!row) {
+        return;
+      }
+      openMenuId = null;
+      fillForm(row);
+      openModal("Edit document");
+    });
+  });
+  list.querySelectorAll("[data-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await api(`/documents/${button.dataset.delete}`, { method: "DELETE" });
+      setStatus(document.getElementById("status"), "Document deleted.", "success");
+      openMenuId = null;
+      await loadDocuments();
+    });
+  });
 }
-function formStatusEl() {
-  return document.getElementById("payment-form-status");
+function fillForm(row) {
+  editingId = String(row.id);
+  selectedFile = null;
+  fileInput.value = "";
+  form.elements.namedItem("name").value = String(row.name || "");
+  form.elements.namedItem("propertyId").value = String(row.property_id || "");
+  form.elements.namedItem("validUntil").value = String(row.valid_until || "").slice(0, 10);
+  setFileHint(String(row.original_filename || "Current file will be kept unless you choose another."));
 }
-function isoDate(value) {
-  const raw = String(value || "").trim();
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
-  return match ? match[1] : "";
+async function loadDocuments() {
+  const propertyId = scope === "general" ? "" : document.getElementById("filterProperty").value;
+  const data = await api(
+    `/documents${qs({ scope: scope === "all" ? "" : scope, propertyId })}`
+  );
+  cache = data.documents;
+  renderList();
 }
-function openPaymentEditor(row, markPaid) {
-  document.getElementById("payment-form-title").textContent = markPaid ? "Mark payment as paid" : "Edit payment";
-  field(paymentForm, "id").value = String(row.id || row._id || "");
-  field(paymentForm, "propertyName").value = String(row.property_name || "");
-  field(paymentForm, "lender").value = String(row.lender || "");
-  field(paymentForm, "dueDate").value = isoDate(row.due_date);
-  field(paymentForm, "expectedAmount").value = String(row.expected_amount ?? "");
-  field(paymentForm, "amountPaid").value = markPaid ? String(row.expected_amount ?? "") : row.amount_paid != null ? String(row.amount_paid) : "";
-  field(paymentForm, "paidDate").value = markPaid ? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) : isoDate(row.paid_date);
-  field(paymentForm, "status").value = markPaid ? "paid" : String(row.status || "upcoming");
-  field(paymentForm, "notes").value = String(row.notes || "");
-  setStatus(formStatusEl(), "", "info");
-  openBackdrop(paymentModal);
-}
-function syncPaidFields() {
-  const status = field(paymentForm, "status").value;
-  const amountPaid = field(paymentForm, "amountPaid");
-  const paidDate = field(paymentForm, "paidDate");
-  const expectedAmount = field(paymentForm, "expectedAmount").value;
-  if (status === "paid" || status === "partial") {
-    if (!amountPaid.value && expectedAmount) {
-      amountPaid.value = expectedAmount;
-    }
-    if (!paidDate.value) {
-      paidDate.value = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    }
-  }
-}
-paymentForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  const paymentId = String(field(paymentForm, "id").value || "").trim();
-  if (!paymentId || paymentId === "undefined") {
-    setStatus(formStatusEl(), "Missing payment id. Re-open Edit and try again.", "error");
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files?.[0] || null;
+  selectedFile = file;
+  if (!file) {
+    setFileHint("PDF, image, Word, or Excel \xB7 up to 4 MB");
     return;
   }
-  syncPaidFields();
-  const expectedAmount = Number(field(paymentForm, "expectedAmount").value);
-  const amountPaidRaw = field(paymentForm, "amountPaid").value.trim();
-  const status = field(paymentForm, "status").value || "upcoming";
-  const amountPaid = amountPaidRaw === "" ? null : Number(amountPaidRaw);
+  if (file.size > MAX_FILE_BYTES) {
+    selectedFile = null;
+    fileInput.value = "";
+    setFileHint("That file is larger than 4 MB. Choose a smaller file.");
+    return;
+  }
+  const nameInput = form.elements.namedItem("name");
+  if (!nameInput.value.trim()) {
+    nameInput.value = file.name.replace(/\.[^.]+$/, "");
+  }
+  setFileHint(`${file.name} \xB7 ${formatBytes(file.size)}`);
+});
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!editingId && !selectedFile) {
+    setStatus(document.getElementById("status"), "Upload a document file.", "error");
+    return;
+  }
+  const formData = new FormData(form);
+  const payload = {
+    name: String(formData.get("name") || "").trim(),
+    propertyId: String(formData.get("propertyId") || "") || null,
+    validUntil: String(formData.get("validUntil") || "") || null
+  };
   try {
-    await api(`/mortgages/payments/${paymentId}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        expectedAmount,
-        amountPaid,
-        paidDate: field(paymentForm, "paidDate").value || null,
-        status,
-        notes: field(paymentForm, "notes").value
-      })
-    });
-    setStatus(document.getElementById("status"), "Payment updated.", "success");
-    closeBackdrop(paymentModal);
-    if (status === "paid" && activeView === "upcoming") {
-      activeView = "past";
+    if (selectedFile) {
+      payload.originalFilename = selectedFile.name;
+      payload.mimeType = selectedFile.type || "application/octet-stream";
+      payload.fileData = await readFileAsBase64(selectedFile);
     }
-    await loadViews();
+    if (editingId) {
+      await api(`/documents/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
+      setStatus(document.getElementById("status"), "Document updated.", "success");
+    } else {
+      await api("/documents", { method: "POST", body: JSON.stringify(payload) });
+      setStatus(document.getElementById("status"), "Document saved.", "success");
+    }
+    closeModal();
+    await loadDocuments();
   } catch (error) {
-    setStatus(formStatusEl(), error.message, "error");
+    setStatus(document.getElementById("status"), error.message, "error");
   }
 });
-field(paymentForm, "status").addEventListener("change", syncPaidFields);
-document.getElementById("close-payment-modal")?.addEventListener("click", () => closeBackdrop(paymentModal));
-document.getElementById("cancel-payment-modal")?.addEventListener("click", () => closeBackdrop(paymentModal));
-paymentModal.addEventListener("click", (event) => {
-  if (event.target === paymentModal) {
-    closeBackdrop(paymentModal);
+document.getElementById("add-document-btn")?.addEventListener("click", () => {
+  editingId = null;
+  selectedFile = null;
+  form.reset();
+  fileInput.value = "";
+  setFileHint("PDF, image, Word, or Excel \xB7 up to 4 MB");
+  if (presetPropertyId) {
+    document.getElementById("documentPropertyId").value = presetPropertyId;
+  } else if (scope === "general") {
+    document.getElementById("documentPropertyId").value = "";
+  }
+  openModal("Add document");
+});
+document.getElementById("close-document-modal")?.addEventListener("click", closeModal);
+document.getElementById("cancel-document-modal")?.addEventListener("click", closeModal);
+modal.addEventListener("click", (event) => {
+  if (event.target === modal) {
+    closeModal();
   }
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !paymentModal.hidden) {
-    closeBackdrop(paymentModal);
+  if (event.key === "Escape" && !modal.hidden) {
+    closeModal();
   } else if (event.key === "Escape" && openMenuId) {
     openMenuId = null;
-    render();
+    renderList();
   }
 });
 document.addEventListener("click", () => {
@@ -916,36 +1003,38 @@ document.addEventListener("click", () => {
     return;
   }
   openMenuId = null;
-  render();
+  renderList();
 });
-document.getElementById("view-tabs")?.addEventListener("click", (event) => {
+document.getElementById("scope-tabs")?.addEventListener("click", (event) => {
   const target = event.target;
-  if (target.dataset.view === "upcoming" || target.dataset.view === "current" || target.dataset.view === "past" || target.dataset.view === "mortgages") {
-    activeView = target.dataset.view;
+  if (target.dataset.scope === "all" || target.dataset.scope === "property" || target.dataset.scope === "general") {
+    scope = target.dataset.scope;
     openMenuId = null;
-    render();
+    syncScopeUi();
+    void loadDocuments();
   }
 });
 document.getElementById("filterProperty")?.addEventListener("change", () => {
-  void loadViews();
+  void loadDocuments();
 });
 bindListChrome({
   view,
   onView: (next) => {
     view = next;
     sessionStorage.setItem(VIEW_KEY, view);
-    render();
+    renderList();
   },
   onSearch: (value) => {
     search = value;
-    render();
+    renderList();
   },
   onSort: (value) => {
     sortBy = value;
-    render();
+    renderList();
   }
 });
+syncScopeUi();
 void (async () => {
   await loadProperties();
-  await loadViews();
+  await loadDocuments();
 })();

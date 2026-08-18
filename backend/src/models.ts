@@ -100,7 +100,23 @@ const expenseSchema = new Schema(
     expenseDate: { type: String, required: true, index: true },
     paymentStatus: { type: String, default: "paid" },
     frequency: { type: String, default: "one_off" },
-    notes: { type: String, default: "" }
+    notes: { type: String, default: "" },
+    documentId: { type: Schema.Types.ObjectId, ref: "PropertyDocument", default: null }
+  },
+  { timestamps: true }
+);
+
+const documentSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    propertyId: { type: Schema.Types.ObjectId, ref: "Property", default: null, index: true },
+    scope: { type: String, default: "general", index: true },
+    name: { type: String, required: true, trim: true },
+    validUntil: { type: String, default: null },
+    originalFilename: { type: String, default: "" },
+    mimeType: { type: String, default: "application/octet-stream" },
+    fileSize: { type: Number, default: 0 },
+    fileData: { type: Buffer, select: false }
   },
   { timestamps: true }
 );
@@ -115,6 +131,7 @@ export type MortgagePaymentDoc = InferSchemaType<typeof mortgagePaymentSchema> &
   _id: mongoose.Types.ObjectId;
 };
 export type ExpenseDoc = InferSchemaType<typeof expenseSchema> & { _id: mongoose.Types.ObjectId };
+export type DocumentDoc = InferSchemaType<typeof documentSchema> & { _id: mongoose.Types.ObjectId };
 
 export const User: Model<UserDoc> =
   mongoose.models.User || mongoose.model<UserDoc>("User", userSchema);
@@ -132,3 +149,6 @@ export const MortgagePayment: Model<MortgagePaymentDoc> =
   mongoose.model<MortgagePaymentDoc>("MortgagePayment", mortgagePaymentSchema);
 export const Expense: Model<ExpenseDoc> =
   mongoose.models.Expense || mongoose.model<ExpenseDoc>("Expense", expenseSchema);
+export const PropertyDocument: Model<DocumentDoc> =
+  mongoose.models.PropertyDocument ||
+  mongoose.model<DocumentDoc>("PropertyDocument", documentSchema);

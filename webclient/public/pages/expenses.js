@@ -42,7 +42,7 @@ function requireSession() {
 }
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  if (!headers.has("Content-Type") && options.body) {
+  if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (options.auth !== false) {
@@ -65,6 +65,29 @@ async function api(path, options = {}) {
     throw new Error(data.message || "Request failed.");
   }
   return data;
+}
+async function apiFile(path) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(`${apiBase()}${path}`, { headers });
+  if (response.status === 401) {
+    clearSession();
+    window.location.href = "/";
+    throw new Error("Session expired.");
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "Could not download the file.");
+  }
+  const blob = await response.blob();
+  const mimeType = response.headers.get("content-type") || blob.type || "application/octet-stream";
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(disposition);
+  const filename = match ? decodeURIComponent(match[1].replace(/"/g, "")) : "document";
+  return { blob, filename, mimeType };
 }
 function getDecimalPrecision() {
   const n = Number(getUser()?.decimalPrecision);
@@ -248,7 +271,7 @@ function renderDataList(rows, view2, empty, openMenuId2) {
           <th>Name</th>
           <th>Status</th>
           <th>Summary</th>
-          ${hasActions ? "<th>Action</th>" : ""}
+          ${hasActions ? `<th class="col-actions">Actions</th>` : ""}
         </tr>
       </thead>
       <tbody>
@@ -258,7 +281,7 @@ function renderDataList(rows, view2, empty, openMenuId2) {
               <td>${cell.name}</td>
               <td>${cell.status}</td>
               <td>${cell.summary}</td>
-              ${hasActions ? `<td>${cell.actions}</td>` : ""}
+              ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
             </tr>`;
   }).join("")}
       </tbody>
@@ -287,6 +310,29 @@ function bindListChrome(options) {
     });
   }
 }
+function positionOpenRowMenu(root2 = document) {
+  const menu = root2.querySelector(".row-menu.open");
+  const button = menu?.querySelector(".kebab-btn");
+  const pop = menu?.querySelector(".row-menu-pop");
+  if (!menu || !button || !pop) {
+    return;
+  }
+  pop.classList.add("fixed-pop");
+  const rect = button.getBoundingClientRect();
+  const width = Math.max(pop.offsetWidth, 136);
+  const height = pop.offsetHeight || 160;
+  let left = rect.right - width;
+  left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+  pop.style.left = `${left}px`;
+  pop.style.right = "auto";
+  if (window.innerHeight - rect.bottom < height + 12) {
+    pop.style.top = "auto";
+    pop.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+  } else {
+    pop.style.bottom = "auto";
+    pop.style.top = `${rect.bottom + 6}px`;
+  }
+}
 function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
   root2.querySelectorAll("[data-menu]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -299,6 +345,9 @@ function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
   root2.querySelectorAll(".row-menu-pop").forEach((pop) => {
     pop.addEventListener("click", (event) => event.stopPropagation());
   });
+  if (openMenuId2) {
+    requestAnimationFrame(() => positionOpenRowMenu(root2));
+  }
 }
 function matchesQuery(row, query, keys) {
   const needle = query.trim().toLowerCase();
@@ -352,6 +401,9 @@ var ICON_PAYMENTS = icon(
 var ICON_RATES = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M18.5 5.5 5.5 18.5"/><circle cx="7" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="17" cy="17" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/>'
 );
+var ICON_DOCUMENTS = icon(
+  '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M7 3.5h7.2L19.5 9v11.5H7z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M14 3.5V9h5.5M9.5 13h6M9.5 16.5h6"/>'
+);
 var ICON_EXPENSES = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M6 3.5v17l1.6-1 1.6 1 1.6-1 1.6 1 1.6-1 1.6 1 1.6-1V3.5l-1.6 1-1.6-1-1.6 1-1.6-1-1.6 1-1.6-1-1.6 1z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M9 8.5h6M9 12h6M9 15.5h4"/>'
 );
@@ -371,6 +423,7 @@ var NAV = [
     ]
   },
   { href: "/expenses.html", label: "Expenses", icon: ICON_EXPENSES },
+  { href: "/documents.html", label: "Documents", icon: ICON_DOCUMENTS },
   { href: "/reports.html", label: "Reports", icon: ICON_REPORTS }
 ];
 function isMortgagesPath(path) {
@@ -601,6 +654,8 @@ function setStatus(el, message, type = "info") {
 
 // src/pages/expenses.ts
 var VIEW_KEY = "pf-expenses-view";
+var MAX_FILE_BYTES = 4 * 1024 * 1024;
+var ACCEPT = ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
 var root = mountShell(
   "/expenses.html",
   "Expenses",
@@ -615,6 +670,7 @@ var sortBy = "date";
 var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
 var openMenuId = null;
 var scope = "property";
+var selectedFile = null;
 root.innerHTML = `
   <section class="panel table-card">
     <div class="table-toolbar">
@@ -681,6 +737,14 @@ root.innerHTML = `
           </div>
           <div class="field" style="grid-column:1/-1"><label>Description</label><input name="description" /></div>
           <div class="field" style="grid-column:1/-1"><label>Notes</label><textarea name="notes"></textarea></div>
+          <div class="field" style="grid-column:1/-1">
+            <label>Receipt or document <span class="muted">(optional)</span></label>
+            <label class="file-drop">
+              <input id="expense-file" type="file" accept="${ACCEPT}" />
+              <span class="file-drop-title">Choose file</span>
+              <span class="file-drop-sub" id="expense-file-sub">PDF, image, Word, or Excel \xB7 up to 4 MB</span>
+            </label>
+          </div>
         </div>
         <div class="modal-actions">
           <button class="btn secondary" id="cancel-expense-modal" type="button">Cancel</button>
@@ -692,6 +756,47 @@ root.innerHTML = `
 `;
 var modal = document.getElementById("expense-modal");
 var form = document.getElementById("expense-form");
+var fileInput = document.getElementById("expense-file");
+function formatBytes(bytes) {
+  if (!bytes) {
+    return "0 B";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function setFileHint(text) {
+  document.getElementById("expense-file-sub").textContent = text;
+}
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.readAsDataURL(file);
+  });
+}
+async function openOrDownload(documentId, download) {
+  const file = await apiFile(`/documents/${documentId}/file`);
+  const url = URL.createObjectURL(file.blob);
+  if (download) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.filename;
+    link.click();
+  } else {
+    window.open(url, "_blank", "noopener");
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 6e4);
+}
 function openModal() {
   syncScopeUi();
   modal.hidden = false;
@@ -700,7 +805,10 @@ function openModal() {
 function closeModal() {
   modal.hidden = true;
   document.body.classList.remove("modal-open");
+  selectedFile = null;
   form.reset();
+  fileInput.value = "";
+  setFileHint("PDF, image, Word, or Excel \xB7 up to 4 MB");
 }
 async function loadProperties() {
   const data = await api(
@@ -736,7 +844,14 @@ function syncScopeUi() {
 }
 function visibleRows() {
   const rows = cache.filter(
-    (row) => matchesQuery(row, search, ["category", "property_name", "description", "payment_status", "notes"])
+    (row) => matchesQuery(row, search, [
+      "category",
+      "property_name",
+      "description",
+      "payment_status",
+      "notes",
+      "document_name"
+    ])
   );
   rows.sort((a, b) => {
     if (sortBy === "name") {
@@ -755,8 +870,11 @@ function renderList() {
   list.innerHTML = renderDataList(
     rows.map((e) => {
       const id = String(e.id);
+      const documentId = String(e.document_id || "");
+      const hasDocument = Boolean(e.has_document && documentId);
       const status = String(e.payment_status || "upcoming");
       const place = scope === "property" ? String(e.property_name || "Property") : "General / Portfolio";
+      const receipt = hasDocument ? ` \xB7 ${e.document_name || "Receipt"}` : "";
       return {
         id,
         title: String(e.category || "Expense"),
@@ -765,8 +883,8 @@ function renderList() {
         status,
         statusLabel: labelize(status),
         summaryTitle: money(Number(e.amount), user.preferredCurrency),
-        summarySub: `${formatDateDmY(String(e.expense_date || ""))} \xB7 ${labelize(String(e.frequency || ""))}`,
-        actions: `<button type="button" data-delete="${id}">Delete</button>`
+        summarySub: `${formatDateDmY(String(e.expense_date || ""))} \xB7 ${labelize(String(e.frequency || ""))}${receipt}`,
+        actions: `${hasDocument ? `<button type="button" data-open="${documentId}">Open receipt</button><button type="button" data-download="${documentId}">Download receipt</button>` : ""}<button type="button" data-delete="${id}">Delete</button>`
       };
     }),
     view,
@@ -781,6 +899,24 @@ function renderList() {
     },
     renderList
   );
+  list.querySelectorAll("[data-open]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await openOrDownload(String(button.dataset.open), false);
+      } catch (error) {
+        setStatus(document.getElementById("status"), error.message, "error");
+      }
+    });
+  });
+  list.querySelectorAll("[data-download]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await openOrDownload(String(button.dataset.download), true);
+      } catch (error) {
+        setStatus(document.getElementById("status"), error.message, "error");
+      }
+    });
+  });
   list.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", async () => {
       await api(`/expenses/${button.dataset.delete}`, { method: "DELETE" });
@@ -811,21 +947,31 @@ document.getElementById("scope-tabs")?.addEventListener("click", (event) => {
 });
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (fileInput.files?.[0] && fileInput.files[0].size > MAX_FILE_BYTES) {
+    setStatus(document.getElementById("status"), "Files must be 4 MB or smaller.", "error");
+    return;
+  }
   const formData = new FormData(form);
+  const payload = {
+    scope,
+    propertyId: scope === "property" ? String(formData.get("propertyId") || "") : null,
+    category: String(formData.get("category")),
+    description: String(formData.get("description") || ""),
+    amount: Number(formData.get("amount")),
+    expenseDate: String(formData.get("expenseDate")),
+    frequency: String(formData.get("frequency")),
+    paymentStatus: String(formData.get("paymentStatus")),
+    notes: String(formData.get("notes") || "")
+  };
   try {
+    if (selectedFile) {
+      payload.originalFilename = selectedFile.name;
+      payload.mimeType = selectedFile.type || "application/octet-stream";
+      payload.fileData = await readFileAsBase64(selectedFile);
+    }
     await api("/expenses", {
       method: "POST",
-      body: JSON.stringify({
-        scope,
-        propertyId: scope === "property" ? String(formData.get("propertyId") || "") : null,
-        category: String(formData.get("category")),
-        description: String(formData.get("description") || ""),
-        amount: Number(formData.get("amount")),
-        expenseDate: String(formData.get("expenseDate")),
-        frequency: String(formData.get("frequency")),
-        paymentStatus: String(formData.get("paymentStatus")),
-        notes: String(formData.get("notes") || "")
-      })
+      body: JSON.stringify(payload)
     });
     setStatus(document.getElementById("status"), "Expense saved.", "success");
     closeModal();
@@ -834,8 +980,26 @@ form.addEventListener("submit", async (event) => {
     setStatus(document.getElementById("status"), error.message, "error");
   }
 });
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files?.[0] || null;
+  selectedFile = file;
+  if (!file) {
+    setFileHint("PDF, image, Word, or Excel \xB7 up to 4 MB");
+    return;
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    selectedFile = null;
+    fileInput.value = "";
+    setFileHint("That file is larger than 4 MB. Choose a smaller file.");
+    return;
+  }
+  setFileHint(`${file.name} \xB7 ${formatBytes(file.size)}`);
+});
 document.getElementById("add-expense-btn")?.addEventListener("click", () => {
+  selectedFile = null;
   form.reset();
+  fileInput.value = "";
+  setFileHint("PDF, image, Word, or Excel \xB7 up to 4 MB");
   if (presetPropertyId) {
     document.getElementById("propertyId").value = presetPropertyId;
   }

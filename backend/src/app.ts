@@ -6,6 +6,7 @@ import propertyRoutes from "./routes/properties.js";
 import rentRoutes from "./routes/rent.js";
 import mortgageRoutes from "./routes/mortgages.js";
 import expenseRoutes from "./routes/expenses.js";
+import documentRoutes from "./routes/documents.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import reportRoutes from "./routes/reports.js";
 
@@ -44,10 +45,11 @@ function parseServerlessBody(req: express.Request, _res: express.Response, next:
 export function createApp(): express.Express {
   const app = express();
   app.use(parseServerlessBody);
-  app.use(express.json());
+  app.use(express.json({ limit: "6mb" }));
   app.use(
     cors({
-      origin: corsOrigin()
+      origin: corsOrigin(),
+      exposedHeaders: ["Content-Disposition"]
     })
   );
 
@@ -61,6 +63,7 @@ export function createApp(): express.Express {
   app.use("/rent", rentRoutes);
   app.use("/mortgages", mortgageRoutes);
   app.use("/expenses", expenseRoutes);
+  app.use("/documents", documentRoutes);
   app.use("/dashboard", dashboardRoutes);
   app.use("/reports", reportRoutes);
 

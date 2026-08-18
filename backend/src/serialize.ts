@@ -95,7 +95,8 @@ export function mapMortgagePayment(
 
 export function mapExpense(
   doc: Record<string, unknown> & { _id?: { toString(): string } },
-  propertyName?: string | null
+  propertyName?: string | null,
+  extras: { documentName?: string | null } = {}
 ) {
   return {
     id: idOf(doc),
@@ -109,6 +110,29 @@ export function mapExpense(
     expense_date: doc.expenseDate,
     payment_status: doc.paymentStatus,
     frequency: doc.frequency,
-    notes: doc.notes ?? ""
+    notes: doc.notes ?? "",
+    document_id: doc.documentId ? String(doc.documentId) : null,
+    has_document: Boolean(doc.documentId),
+    document_name: extras.documentName ?? null
+  };
+}
+
+export function mapDocument(
+  doc: Record<string, unknown> & { _id?: { toString(): string } },
+  propertyName?: string | null
+) {
+  return {
+    id: idOf(doc),
+    user_id: String(doc.userId ?? ""),
+    property_id: doc.propertyId ? String(doc.propertyId) : null,
+    property_name: propertyName ?? null,
+    scope: doc.scope === "property" ? "property" : "general",
+    name: doc.name,
+    valid_until: doc.validUntil ?? null,
+    original_filename: doc.originalFilename ?? "",
+    mime_type: doc.mimeType ?? "application/octet-stream",
+    file_size: Number(doc.fileSize || 0),
+    created_at: doc.createdAt ?? null,
+    updated_at: doc.updatedAt ?? null
   };
 }

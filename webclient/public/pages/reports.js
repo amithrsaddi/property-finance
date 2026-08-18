@@ -42,7 +42,7 @@ function requireSession() {
 }
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  if (!headers.has("Content-Type") && options.body) {
+  if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (options.auth !== false) {
@@ -157,6 +157,9 @@ var ICON_PAYMENTS = icon(
 var ICON_RATES = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M18.5 5.5 5.5 18.5"/><circle cx="7" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="17" cy="17" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/>'
 );
+var ICON_DOCUMENTS = icon(
+  '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M7 3.5h7.2L19.5 9v11.5H7z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M14 3.5V9h5.5M9.5 13h6M9.5 16.5h6"/>'
+);
 var ICON_EXPENSES = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M6 3.5v17l1.6-1 1.6 1 1.6-1 1.6 1 1.6-1 1.6 1 1.6-1V3.5l-1.6 1-1.6-1-1.6 1-1.6-1-1.6 1-1.6-1-1.6 1z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M9 8.5h6M9 12h6M9 15.5h4"/>'
 );
@@ -176,6 +179,7 @@ var NAV = [
     ]
   },
   { href: "/expenses.html", label: "Expenses", icon: ICON_EXPENSES },
+  { href: "/documents.html", label: "Documents", icon: ICON_DOCUMENTS },
   { href: "/reports.html", label: "Reports", icon: ICON_REPORTS }
 ];
 function isMortgagesPath(path) {

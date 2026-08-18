@@ -133,6 +133,7 @@ textarea {
   display: grid;
   grid-template-columns: 18rem 1fr;
   min-height: 100vh;
+  min-width: 0;
 }
 
 .sidebar {
@@ -445,12 +446,14 @@ textarea {
 
 .main {
   padding: 1.4rem clamp(1.25rem, 4vw, 3rem) 2rem;
+  min-width: 0;
 }
 
 .main .topbar,
 .main #page-root {
   width: 100%;
   max-width: 1200px;
+  min-width: 0;
   margin-left: auto;
   margin-right: auto;
 }
@@ -534,6 +537,8 @@ textarea {
 .panel {
   padding: 1rem 1.1rem;
   margin-bottom: 1rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .panel h2 {
@@ -619,6 +624,45 @@ table select:focus {
 .field textarea {
   min-height: 80px;
   resize: vertical;
+}
+
+.file-drop {
+  position: relative;
+  display: grid;
+  gap: 0.15rem;
+  border: 1px dashed var(--line);
+  border-radius: 0.7rem;
+  background: hsl(var(--secondary) / 0.45);
+  padding: 0.95rem 1rem;
+  cursor: pointer;
+}
+
+.field .file-drop input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+}
+
+.file-drop-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.file-drop-sub {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.field label .muted {
+  font-weight: 500;
 }
 
 .actions {
@@ -1197,6 +1241,7 @@ th {
 
 .table-card {
   padding: 1rem 1.1rem 0.4rem;
+  overflow: visible;
 }
 
 .table-card .status {
@@ -1375,6 +1420,8 @@ th {
 
 .data-table-wrap {
   overflow-x: auto;
+  max-width: 100%;
+  min-width: 0;
   margin: 0 -1.1rem;
 }
 
@@ -1408,11 +1455,23 @@ th {
   border-bottom: none;
 }
 
+.data-table th.col-actions,
+.data-table td.col-actions {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+  padding-left: 0.5rem;
+}
+
+.data-table th.col-actions {
+  text-align: right;
+}
+
 .name-cell {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  min-width: 12rem;
+  min-width: 0;
 }
 
 .row-avatar {
@@ -1440,6 +1499,7 @@ th {
   color: var(--ink);
   font-size: 0.9rem;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 a.name-title:hover {
@@ -1451,6 +1511,7 @@ a.name-title:hover {
   font-size: 0.75rem;
   line-height: 1.35;
   margin-top: 0.1rem;
+  overflow-wrap: anywhere;
 }
 
 .pill {
@@ -1549,7 +1610,7 @@ a.name-title:hover {
 
 .row-menu {
   position: relative;
-  display: flex;
+  display: inline-flex;
   justify-content: flex-end;
 }
 
@@ -1582,7 +1643,16 @@ a.name-title:hover {
   border-radius: 0.6rem;
   box-shadow: var(--shadow);
   padding: 0.3rem;
-  z-index: 8;
+  z-index: 40;
+}
+
+.row-menu.open .row-menu-pop {
+  display: grid;
+}
+
+.row-menu-pop.fixed-pop {
+  position: fixed;
+  right: auto;
 }
 
 .row-menu.open .row-menu-pop {
@@ -2521,6 +2591,12 @@ html.dark .breakdown-grid .value.pending {
 
   .topbar {
     padding-right: 3.25rem;
+    flex-wrap: wrap;
+  }
+
+  .topbar > div:first-child {
+    min-width: 0;
+    flex: 1 1 8rem;
   }
 
   .menu-toggle {
@@ -2597,14 +2673,155 @@ html.dark .breakdown-grid .value.pending {
 
   .table-toolbar-end {
     width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .table-toolbar,
+  .table-toolbar-start {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .table-filters {
+    width: 100%;
+  }
+
+  .table-filters .field {
+    flex: 1 1 9rem;
+    min-width: 0;
+  }
+
+  .seg-tabs {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .seg-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .seg-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.78rem;
+  }
+
+  .sort-field {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .sort-field select {
+    flex: 1;
+    min-width: 0;
   }
 
   .search-field {
-    flex: 1;
+    flex: 1 1 100%;
+    min-width: 0;
   }
 
   .search-field input {
     width: 100%;
+  }
+
+  .view-toggle {
+    margin-left: auto;
+  }
+
+  .table-card {
+    padding: 0.9rem 0.85rem 0.75rem;
+  }
+
+  .data-table-wrap {
+    overflow: visible;
+    margin: 0;
+  }
+
+  .data-table {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table tbody {
+    display: block;
+  }
+
+  .data-table tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.35rem 0.75rem;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--line);
+    align-items: start;
+  }
+
+  .data-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .data-table td {
+    display: block;
+    padding: 0;
+    border: none;
+    min-width: 0;
+  }
+
+  .data-table td:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .data-table td:nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .data-table td:nth-child(3) {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .data-table td.col-actions,
+  .data-table td:last-child:has(.row-menu) {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: start;
+    text-align: right;
+    width: auto;
+    padding: 0;
+  }
+
+  .data-table tbody tr:hover td {
+    background: transparent;
+  }
+
+  .name-cell {
+    align-items: flex-start;
+  }
+
+  .property-grid {
+    grid-template-columns: 1fr;
+    padding-bottom: 0.5rem;
+  }
+
+  .table-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .topbar-actions .btn {
+    white-space: nowrap;
+    font-size: 0.8rem;
+    padding: 0.45rem 0.7rem;
   }
 
   .overview-cards,
