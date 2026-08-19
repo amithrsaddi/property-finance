@@ -1879,6 +1879,11 @@ body.nav-open {
   gap: 1.15rem;
 }
 
+#docs-body {
+  display: grid;
+  gap: 1.5rem;
+}
+
 .docs-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -2061,19 +2066,42 @@ body.nav-open {
 .docs-file-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
-  gap: 0.65rem;
-  margin-bottom: 0.85rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 0.85rem;
+  margin-bottom: 0.9rem;
 }
 
-.docs-file-toolbar .field {
-  min-width: 9rem;
+.docs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.docs-filters select {
+  min-height: 2.25rem;
+  min-width: 9.25rem;
+  max-width: 14rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.4rem 0.7rem;
 }
 
 .docs-file-toolbar .search-field {
   margin-left: auto;
+  flex: 0 1 16rem;
   min-width: 12rem;
-  flex: 1 1 14rem;
+}
+
+.docs-file-toolbar .search-field input {
+  width: 100%;
+  min-height: 2.25rem;
 }
 
 .field .switch {
@@ -3285,12 +3313,18 @@ html.dark .breakdown-grid .value.pending {
 
   .docs-file-toolbar .search-field {
     margin-left: 0;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .docs-filters {
     width: 100%;
   }
 
-  .docs-file-toolbar .field {
-    min-width: 0;
+  .docs-filters select {
     flex: 1 1 8rem;
+    max-width: none;
+    min-width: 0;
   }
 
   .docs-tabs {

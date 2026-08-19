@@ -1054,16 +1054,15 @@ function renderFileTable(rows, includeFolders = false) {
 function renderFiles() {
   const rows = filesInScope();
   const allCount = currentFolderId ? filesCache.filter((row) => String(row.folder_id || "") === currentFolderId).length : filesCache.length;
-  const locationSelect = currentFolderId ? "" : `<div class="field"><label>Location</label>
+  const locationSelect = currentFolderId ? "" : `<label class="sr-only" for="filter-location">Location</label>
         <select id="filter-location">
-          <option value="">All folders</option>
+          <option value="">Location</option>
           <option value="unfiled"${locationFilter === "unfiled" ? " selected" : ""}>Unfiled</option>
           ${foldersCache.map((folder) => {
     const id = String(folder.id);
     return `<option value="${escapeHtml(id)}"${locationFilter === id ? " selected" : ""}>${escapeHtml(folderPath(id))}</option>`;
   }).join("")}
-        </select>
-      </div>`;
+        </select>`;
   const bulk = selectedIds.size ? `<div class="docs-bulk">
         ${selectedIds.size} selected
         <button class="btn secondary" id="bulk-move" type="button">Move to folder</button>
@@ -1079,16 +1078,16 @@ function renderFiles() {
       <div class="docs-section-tools"><button class="plus-btn" id="add-file-btn" type="button" aria-label="Upload file">+</button></div>
     </div>
     <div class="docs-file-toolbar">
-      ${locationSelect}
-      <div class="field"><label>File type</label>
+      <div class="docs-filters">
+        ${locationSelect}
+        <label class="sr-only" for="filter-type">File type</label>
         <select id="filter-type">
-          <option value="">All types</option>
+          <option value="">File type</option>
           ${["PDF", "Image", "Word", "Excel", "Text"].map((kind) => `<option${typeFilter === kind ? " selected" : ""}>${kind}</option>`).join("")}
         </select>
-      </div>
-      <div class="field"><label>Modified</label>
+        <label class="sr-only" for="filter-modified">Modified</label>
         <select id="filter-modified">
-          <option value="">Any time</option>
+          <option value="">Modified</option>
           <option value="7"${modifiedFilter === "7" ? " selected" : ""}>Last 7 days</option>
           <option value="30"${modifiedFilter === "30" ? " selected" : ""}>Last 30 days</option>
           <option value="90"${modifiedFilter === "90" ? " selected" : ""}>Last 90 days</option>
