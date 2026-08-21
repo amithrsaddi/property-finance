@@ -32,6 +32,8 @@ type MortgageRow = {
 };
 
 const VIEW_KEY = "pf-rates-view-v2";
+const MOBILE_VIEW = window.matchMedia("(max-width: 900px)");
+const viewKey = () => (MOBILE_VIEW.matches ? `${VIEW_KEY}-m` : VIEW_KEY);
 const root = mountShell(
   "/rates.html",
   "Rates",
@@ -43,7 +45,7 @@ const presetPropertyId = new URLSearchParams(window.location.search).get("proper
 let cache: MortgageRow[] = [];
 let search = "";
 let sortBy = "name";
-let view: ListViewMode = storedListView(VIEW_KEY, "grid");
+let view: ListViewMode = storedListView(viewKey(), "grid");
 let editingId: string | null = null;
 let openMenuId: string | null = null;
 
@@ -363,7 +365,7 @@ bindListChrome({
   view,
   onView: (next) => {
     view = next;
-    sessionStorage.setItem(VIEW_KEY, view);
+    sessionStorage.setItem(viewKey(), view);
     renderRates();
   },
   onSearch: (value) => {

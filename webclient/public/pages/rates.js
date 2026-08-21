@@ -236,7 +236,8 @@ function pillKind(status) {
 }
 function statusPill(status, label) {
   const text = label || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  return `<span class="pill ${pillKind(status)}">${escapeHtml(text)}</span>`;
+  const slug = String(status || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `<span class="pill ${pillKind(status)}${slug ? ` pill-${slug}` : ""}">${escapeHtml(text)}</span>`;
 }
 function nameCell(title, subtitle, href, property) {
   const heading = href ? `<a class="name-title" href="${escapeHtml(href)}">${escapeHtml(title)}</a>` : `<div class="name-title">${escapeHtml(title)}</div>`;
@@ -348,7 +349,7 @@ function renderDataList(rows, view2, empty, openMenuId2, options) {
             ${hasActions ? cell.actions : ""}
           </div>
           <div class="property-card-meta">
-            ${cell.status}
+            <div class="card-status">${cell.status}</div>
             ${extras}
           </div>
         </article>`;
@@ -753,6 +754,8 @@ function setStatus(el, message, type = "info") {
 
 // src/pages/rates.ts
 var VIEW_KEY = "pf-rates-view-v2";
+var MOBILE_VIEW = window.matchMedia("(max-width: 900px)");
+var viewKey = () => MOBILE_VIEW.matches ? `${VIEW_KEY}-m` : VIEW_KEY;
 var root = mountShell(
   "/rates.html",
   "Rates",
@@ -764,7 +767,7 @@ var presetPropertyId = new URLSearchParams(window.location.search).get("property
 var cache = [];
 var search = "";
 var sortBy = "name";
-var view = storedListView(VIEW_KEY, "grid");
+var view = storedListView(viewKey(), "grid");
 var editingId = null;
 var openMenuId = null;
 root.innerHTML = `
@@ -1070,7 +1073,7 @@ bindListChrome({
   view,
   onView: (next) => {
     view = next;
-    sessionStorage.setItem(VIEW_KEY, view);
+    sessionStorage.setItem(viewKey(), view);
     renderRates();
   },
   onSearch: (value) => {

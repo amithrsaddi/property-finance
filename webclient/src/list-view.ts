@@ -160,7 +160,11 @@ export function pillKind(status: string): string {
 
 export function statusPill(status: string, label?: string): string {
   const text = label || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  return `<span class="pill ${pillKind(status)}">${escapeHtml(text)}</span>`;
+  const slug = String(status || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `<span class="pill ${pillKind(status)}${slug ? ` pill-${slug}` : ""}">${escapeHtml(text)}</span>`;
 }
 
 export function nameCell(
@@ -304,7 +308,7 @@ export function renderDataList(
             ${hasActions ? cell.actions : ""}
           </div>
           <div class="property-card-meta">
-            ${cell.status}
+            <div class="card-status">${cell.status}</div>
             ${extras}
           </div>
         </article>`;

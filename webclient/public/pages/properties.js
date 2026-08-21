@@ -835,7 +835,7 @@ function renderList(rows) {
             ${actionMenu(row)}
           </div>
           <div class="property-card-meta">
-            ${statusBadge(String(row.status))}
+            <div class="card-status">${statusBadge(String(row.status))}</div>
             ${summaryCell(row)}
           </div>
         </article>`

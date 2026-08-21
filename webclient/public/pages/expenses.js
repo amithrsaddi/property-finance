@@ -240,7 +240,8 @@ function pillKind(status) {
 }
 function statusPill(status, label) {
   const text = label || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  return `<span class="pill ${pillKind(status)}">${escapeHtml(text)}</span>`;
+  const slug = String(status || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `<span class="pill ${pillKind(status)}${slug ? ` pill-${slug}` : ""}">${escapeHtml(text)}</span>`;
 }
 function nameCell(title, subtitle, href, property) {
   const heading = href ? `<a class="name-title" href="${escapeHtml(href)}">${escapeHtml(title)}</a>` : `<div class="name-title">${escapeHtml(title)}</div>`;
@@ -352,7 +353,7 @@ function renderDataList(rows, view2, empty, openMenuId2, options) {
             ${hasActions ? cell.actions : ""}
           </div>
           <div class="property-card-meta">
-            ${cell.status}
+            <div class="card-status">${cell.status}</div>
             ${extras}
           </div>
         </article>`;

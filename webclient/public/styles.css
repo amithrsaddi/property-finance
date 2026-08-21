@@ -1799,10 +1799,13 @@ a.name-title:hover {
 .pill {
   display: inline-flex;
   align-items: center;
+  width: fit-content;
+  max-width: 100%;
   border-radius: 999px;
   padding: 0.22rem 0.7rem;
   font-size: 0.75rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .pill.done {
@@ -1985,14 +1988,35 @@ a.name-title:hover {
 }
 
 .property-card-meta {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.65rem;
-  justify-items: start;
+}
+
+.card-status {
+  display: flex;
+  justify-content: flex-start;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.card-status .pill {
+  flex: 0 0 auto;
+  width: fit-content;
 }
 
 .property-card-meta .pill {
-  width: max-content;
+  align-self: flex-start;
+  width: fit-content;
   max-width: 100%;
+  white-space: nowrap;
+}
+
+.property-card-meta .card-extras,
+.property-card-meta .summary-cell {
+  width: 100%;
 }
 
 .card-extras {
@@ -3725,9 +3749,15 @@ html.dark .breakdown-grid .value.pending {
     font-size: 0.7rem;
   }
 
-  .property-card .pill {
-    padding: 0.1rem 0.45rem;
-    font-size: 0.65rem;
+  .property-card .pill,
+  .card-status .pill,
+  .data-table td.col-status .pill {
+    padding: 0.08rem 0.4rem;
+    font-size: 0.6rem;
+    line-height: 1.15;
+    width: fit-content;
+    max-width: 100%;
+    white-space: nowrap;
   }
 
   .property-card .summary-cell .name-title {
