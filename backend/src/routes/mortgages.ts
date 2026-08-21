@@ -183,7 +183,15 @@ router.post("/payments", async (req: AuthedRequest, res) => {
 });
 
 router.post("/payments/bulk", async (req: AuthedRequest, res) => {
-  const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(String).filter(Boolean))];
+  const ids: string[] = [];
+  if (Array.isArray(req.body?.ids)) {
+    for (const value of req.body.ids as unknown[]) {
+      const id = String(value);
+      if (/^[a-fA-F0-9]{24}$/.test(id) && !ids.includes(id)) {
+        ids.push(id);
+      }
+    }
+  }
   const action = String(req.body?.status || "").toLowerCase();
   if (!ids.length) {
     return res.status(400).json({ message: "Select at least one payment." });
@@ -195,23 +203,23 @@ router.post("/payments/bulk", async (req: AuthedRequest, res) => {
     return res.status(400).json({ message: "Status must be paid or unpaid." });
   }
 
-  const validIds = ids.filter((id) => /^[a-fA-F0-9]{24}$/.test(id));
-  const payments = await MortgagePayment.find({ _id: { $in: validIds }, userId: req.user!.id });
+  const payments = await MortgagePayment.find({ _id: { $in: ids }, userId: req.user!.id });
   const today = todayIso();
   for (const existing of payments) {
+    const payment = existing as MortgagePaymentRecord;
     if (action === "paid") {
-      await applyPaymentUpdate(existing, {
-        amountPaid: existing.expectedAmount,
+      await applyPaymentUpdate(payment, {
+        amountPaid: payment.expectedAmount,
         paidDate: today,
         status: "paid",
-        notes: String(existing.notes || "")
+        notes: String(payment.notes || "")
       });
     } else {
-      await applyPaymentUpdate(existing, {
+      await applyPaymentUpdate(payment, {
         amountPaid: null,
         paidDate: null,
-        status: String(existing.dueDate) < today ? "overdue" : "upcoming",
-        notes: String(existing.notes || "")
+        status: String(payment.dueDate) < today ? "overdue" : "upcoming",
+        notes: String(payment.notes || "")
       });
     }
   }
@@ -435,8 +443,10 @@ router.delete("/:id", async (req: AuthedRequest, res) => {
   return res.json({ message: "Mortgage deleted." });
 });
 
+type MortgagePaymentRecord = NonNullable<Awaited<ReturnType<typeof MortgagePayment.findOne>>>;
+
 async function applyPaymentUpdate(
-  existing: InstanceType<typeof MortgagePayment>,
+  existing: MortgagePaymentRecord,
   input: {
     expectedAmount?: number;
     amountPaid: number | null;
