@@ -1431,6 +1431,10 @@ th {
   border-collapse: collapse;
 }
 
+.data-table.has-extras {
+  min-width: 980px;
+}
+
 .data-table th,
 .data-table td {
   text-align: left;
@@ -1705,6 +1709,16 @@ a.name-title:hover {
 .property-card-meta {
   display: grid;
   gap: 0.65rem;
+}
+
+.card-extras {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem 0.75rem;
+}
+
+.card-extra .name-title {
+  font-variant-numeric: tabular-nums;
 }
 
 .property-card-foot {
@@ -3261,10 +3275,23 @@ html.dark .breakdown-grid .value.pending {
     grid-row: 3;
   }
 
+  .data-table td.col-extra {
+    grid-column: 1;
+  }
+
+  .data-table td.col-extra::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-bottom: 0.1rem;
+  }
+
   .data-table td.col-actions,
   .data-table td:last-child:has(.row-menu) {
     grid-column: 2;
-    grid-row: 1 / span 3;
+    grid-row: 1 / -1;
     align-self: start;
     text-align: right;
     width: auto;

@@ -140,10 +140,10 @@ function avatarTone(value) {
 }
 function pillKind(status) {
   const value = String(status || "").toLowerCase();
-  if (value === "paid" || value === "active" || value === "done") {
+  if (value === "paid" || value === "active" || value === "done" || value === "repayment") {
     return "done";
   }
-  if (value === "upcoming" || value === "partial" || value === "partially_paid" || value === "info") {
+  if (value === "upcoming" || value === "partial" || value === "partially_paid" || value === "info" || value === "interest_only") {
     return "progress";
   }
   if (value === "archived" || value === "paused") {
@@ -172,6 +172,12 @@ function summaryCell(title, subtitle) {
   return `<div class="summary-cell">
     <div class="name-title">${escapeHtml(title)}</div>
     <div class="name-sub">${escapeHtml(subtitle)}</div>
+  </div>`;
+}
+function extraCell(extra) {
+  return `<div class="summary-cell">
+    <div class="name-title">${escapeHtml(extra.title)}</div>
+    ${extra.subtitle ? `<div class="name-sub">${escapeHtml(extra.subtitle)}</div>` : ""}
   </div>`;
 }
 function kebabMenu(id, open, itemsHtml) {
@@ -213,18 +219,32 @@ function renderDataList(rows, view2, empty, openMenuId2) {
     return `<p class="empty">${empty}</p>`;
   }
   const hasActions = rows.some((row) => Boolean(row.actions));
+  const extraHeaders = rows[0]?.extras?.map((extra) => extra.header) ?? [];
+  const hasExtras = extraHeaders.length > 0;
   const cells = (row) => {
     const actions = kebabMenu(row.id, openMenuId2 === row.id, row.actions || "");
     return {
       name: nameCell(row.title, row.subtitle, row.href),
       status: statusPill(row.status, row.statusLabel),
       summary: summaryCell(row.summaryTitle, row.summarySub),
+      extras: extraHeaders.map((header, index) => {
+        const extra = row.extras?.[index] || { header, title: "\u2014" };
+        return extraCell(extra);
+      }),
       actions
     };
   };
   if (view2 === "grid") {
     return `<div class="property-grid">${rows.map((row) => {
       const cell = cells(row);
+      const extras = hasExtras ? `<div class="card-extras">${extraHeaders.map((header, index) => {
+        const extra = row.extras?.[index] || { header, title: "\u2014" };
+        return `<div class="card-extra">
+                  <div class="name-sub">${escapeHtml(header)}</div>
+                  <div class="name-title">${escapeHtml(extra.title)}</div>
+                  ${extra.subtitle ? `<div class="name-sub">${escapeHtml(extra.subtitle)}</div>` : ""}
+                </div>`;
+      }).join("")}</div>` : cell.summary;
       return `<article class="property-card">
           <div class="property-card-head">
             ${cell.name}
@@ -232,28 +252,31 @@ function renderDataList(rows, view2, empty, openMenuId2) {
           </div>
           <div class="property-card-meta">
             ${cell.status}
-            ${cell.summary}
+            ${extras}
           </div>
         </article>`;
     }).join("")}</div>`;
   }
   return `<div class="data-table-wrap">
-    <table class="data-table">
+    <table class="data-table${hasExtras ? " has-extras" : ""}">
       <thead>
         <tr>
           <th>Name</th>
           <th>Status</th>
-          <th>Summary</th>
+          ${hasExtras ? extraHeaders.map((header) => `<th>${escapeHtml(header)}</th>`).join("") : "<th>Summary</th>"}
           ${hasActions ? `<th class="col-actions">Actions</th>` : ""}
         </tr>
       </thead>
       <tbody>
         ${rows.map((row) => {
     const cell = cells(row);
+    const extraTds = hasExtras ? cell.extras.map(
+      (html, index) => `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
+    ).join("") : `<td>${cell.summary}</td>`;
     return `<tr>
               <td>${cell.name}</td>
               <td>${cell.status}</td>
-              <td>${cell.summary}</td>
+              ${extraTds}
               ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
             </tr>`;
   }).join("")}
@@ -758,7 +781,7 @@ async function loadProperties() {
     formSelect.value = presetPropertyId;
   }
 }
-function expiryLabel(value) {
+function expiryHint(value) {
   if (!value) {
     return "No fixed expiry";
   }
@@ -767,17 +790,16 @@ function expiryLabel(value) {
   const days = Math.round(
     (expiry.getTime() - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 864e5
   );
-  const formatted = formatDateDmY(value);
   if (days < 0) {
-    return `Expired ${formatted}`;
+    return "Expired";
   }
   if (days === 0) {
-    return `Expires today (${formatted})`;
+    return "Expires today";
   }
   if (days <= 90) {
-    return `Expires in ${days} days (${formatted})`;
+    return `Expires in ${days} days`;
   }
-  return `Fixed until ${formatted}`;
+  return void 0;
 }
 function visibleRows() {
   const rows = cache.filter(
@@ -808,10 +830,25 @@ function renderRates() {
       title: String(m.property_name || "Property"),
       subtitle: String(m.lender || "Lender"),
       href: m.property_id ? `/property.html?id=${m.property_id}` : void 0,
-      status: m.status === "active" ? "active" : String(m.mortgage_type || "repayment"),
+      status: m.status === "archived" ? "archived" : String(m.mortgage_type || "repayment"),
       statusLabel: labelize(String(m.mortgage_type || "repayment")),
-      summaryTitle: `${m.interest_rate}% \xB7 ${money(Number(m.monthly_repayment), user.preferredCurrency)} / mo`,
-      summarySub: expiryLabel(m.fixed_rate_expiry),
+      summaryTitle: money(Number(m.outstanding_balance), user.preferredCurrency),
+      summarySub: "Outstanding",
+      extras: [
+        {
+          header: "Interest",
+          title: `${Number(m.interest_rate)}%`
+        },
+        {
+          header: "Monthly Payment",
+          title: money(Number(m.monthly_repayment), user.preferredCurrency)
+        },
+        {
+          header: "Fixed Until",
+          title: m.fixed_rate_expiry ? formatDateDmY(m.fixed_rate_expiry) : "\u2014",
+          subtitle: expiryHint(m.fixed_rate_expiry)
+        }
+      ],
       actions: `<button type="button" data-edit="${m.id}">Edit</button><button type="button" data-delete="${m.id}">Delete</button>`
     })),
     view,

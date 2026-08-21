@@ -1,5 +1,11 @@
 export type ListViewMode = "list" | "grid";
 
+export type ListExtra = {
+  header: string;
+  title: string;
+  subtitle?: string;
+};
+
 export type ListRow = {
   id: string;
   title: string;
@@ -9,6 +15,7 @@ export type ListRow = {
   statusLabel?: string;
   summaryTitle: string;
   summarySub: string;
+  extras?: ListExtra[];
   actions?: string;
 };
 
@@ -41,10 +48,16 @@ export function avatarTone(value: string): number {
 
 export function pillKind(status: string): string {
   const value = String(status || "").toLowerCase();
-  if (value === "paid" || value === "active" || value === "done") {
+  if (value === "paid" || value === "active" || value === "done" || value === "repayment") {
     return "done";
   }
-  if (value === "upcoming" || value === "partial" || value === "partially_paid" || value === "info") {
+  if (
+    value === "upcoming" ||
+    value === "partial" ||
+    value === "partially_paid" ||
+    value === "info" ||
+    value === "interest_only"
+  ) {
     return "progress";
   }
   if (value === "archived" || value === "paused") {
@@ -78,6 +91,13 @@ export function summaryCell(title: string, subtitle: string): string {
   return `<div class="summary-cell">
     <div class="name-title">${escapeHtml(title)}</div>
     <div class="name-sub">${escapeHtml(subtitle)}</div>
+  </div>`;
+}
+
+export function extraCell(extra: ListExtra): string {
+  return `<div class="summary-cell">
+    <div class="name-title">${escapeHtml(extra.title)}</div>
+    ${extra.subtitle ? `<div class="name-sub">${escapeHtml(extra.subtitle)}</div>` : ""}
   </div>`;
 }
 
@@ -124,12 +144,18 @@ export function renderDataList(rows: ListRow[], view: ListViewMode, empty: strin
     return `<p class="empty">${empty}</p>`;
   }
   const hasActions = rows.some((row) => Boolean(row.actions));
+  const extraHeaders = rows[0]?.extras?.map((extra) => extra.header) ?? [];
+  const hasExtras = extraHeaders.length > 0;
   const cells = (row: ListRow) => {
     const actions = kebabMenu(row.id, openMenuId === row.id, row.actions || "");
     return {
       name: nameCell(row.title, row.subtitle, row.href),
       status: statusPill(row.status, row.statusLabel),
       summary: summaryCell(row.summaryTitle, row.summarySub),
+      extras: extraHeaders.map((header, index) => {
+        const extra = row.extras?.[index] || { header, title: "—" };
+        return extraCell(extra);
+      }),
       actions
     };
   };
@@ -137,6 +163,18 @@ export function renderDataList(rows: ListRow[], view: ListViewMode, empty: strin
     return `<div class="property-grid">${rows
       .map((row) => {
         const cell = cells(row);
+        const extras = hasExtras
+          ? `<div class="card-extras">${extraHeaders
+              .map((header, index) => {
+                const extra = row.extras?.[index] || { header, title: "—" };
+                return `<div class="card-extra">
+                  <div class="name-sub">${escapeHtml(header)}</div>
+                  <div class="name-title">${escapeHtml(extra.title)}</div>
+                  ${extra.subtitle ? `<div class="name-sub">${escapeHtml(extra.subtitle)}</div>` : ""}
+                </div>`;
+              })
+              .join("")}</div>`
+          : cell.summary;
         return `<article class="property-card">
           <div class="property-card-head">
             ${cell.name}
@@ -144,19 +182,23 @@ export function renderDataList(rows: ListRow[], view: ListViewMode, empty: strin
           </div>
           <div class="property-card-meta">
             ${cell.status}
-            ${cell.summary}
+            ${extras}
           </div>
         </article>`;
       })
       .join("")}</div>`;
   }
   return `<div class="data-table-wrap">
-    <table class="data-table">
+    <table class="data-table${hasExtras ? " has-extras" : ""}">
       <thead>
         <tr>
           <th>Name</th>
           <th>Status</th>
-          <th>Summary</th>
+          ${
+            hasExtras
+              ? extraHeaders.map((header) => `<th>${escapeHtml(header)}</th>`).join("")
+              : "<th>Summary</th>"
+          }
           ${hasActions ? `<th class="col-actions">Actions</th>` : ""}
         </tr>
       </thead>
@@ -164,10 +206,18 @@ export function renderDataList(rows: ListRow[], view: ListViewMode, empty: strin
         ${rows
           .map((row) => {
             const cell = cells(row);
+            const extraTds = hasExtras
+              ? cell.extras
+                  .map(
+                    (html, index) =>
+                      `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
+                  )
+                  .join("")
+              : `<td>${cell.summary}</td>`;
             return `<tr>
               <td>${cell.name}</td>
               <td>${cell.status}</td>
-              <td>${cell.summary}</td>
+              ${extraTds}
               ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
             </tr>`;
           })

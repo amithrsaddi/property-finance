@@ -169,7 +169,7 @@ async function loadProperties(): Promise<void> {
   }
 }
 
-function expiryLabel(value: string | null): string {
+function expiryHint(value: string | null): string | undefined {
   if (!value) {
     return "No fixed expiry";
   }
@@ -178,17 +178,16 @@ function expiryLabel(value: string | null): string {
   const days = Math.round(
     (expiry.getTime() - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 86400000
   );
-  const formatted = formatDateDmY(value);
   if (days < 0) {
-    return `Expired ${formatted}`;
+    return "Expired";
   }
   if (days === 0) {
-    return `Expires today (${formatted})`;
+    return "Expires today";
   }
   if (days <= 90) {
-    return `Expires in ${days} days (${formatted})`;
+    return `Expires in ${days} days`;
   }
-  return `Fixed until ${formatted}`;
+  return undefined;
 }
 
 function visibleRows(): MortgageRow[] {
@@ -221,10 +220,25 @@ function renderRates(): void {
       title: String(m.property_name || "Property"),
       subtitle: String(m.lender || "Lender"),
       href: m.property_id ? `/property.html?id=${m.property_id}` : undefined,
-      status: m.status === "active" ? "active" : String(m.mortgage_type || "repayment"),
+      status: m.status === "archived" ? "archived" : String(m.mortgage_type || "repayment"),
       statusLabel: labelize(String(m.mortgage_type || "repayment")),
-      summaryTitle: `${m.interest_rate}% · ${money(Number(m.monthly_repayment), user.preferredCurrency)} / mo`,
-      summarySub: expiryLabel(m.fixed_rate_expiry),
+      summaryTitle: money(Number(m.outstanding_balance), user.preferredCurrency),
+      summarySub: "Outstanding",
+      extras: [
+        {
+          header: "Interest",
+          title: `${Number(m.interest_rate)}%`
+        },
+        {
+          header: "Monthly Payment",
+          title: money(Number(m.monthly_repayment), user.preferredCurrency)
+        },
+        {
+          header: "Fixed Until",
+          title: m.fixed_rate_expiry ? formatDateDmY(m.fixed_rate_expiry) : "—",
+          subtitle: expiryHint(m.fixed_rate_expiry)
+        }
+      ],
       actions: `<button type="button" data-edit="${m.id}">Edit</button><button type="button" data-delete="${m.id}">Delete</button>`
     })),
     view,

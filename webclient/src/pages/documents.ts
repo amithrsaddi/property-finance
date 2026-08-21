@@ -34,7 +34,7 @@ let filesCache: DocRow[] = [];
 let foldersCache: DocRow[] = [];
 let properties: Array<{ id: string; name: string }> = [];
 let currentFolderId: string | null = null;
-let pageView: PageView = sessionStorage.getItem(PAGE_VIEW_KEY) === "timeline" ? "timeline" : "explorer";
+let pageView: PageView = sessionStorage.getItem(PAGE_VIEW_KEY) === "explorer" ? "explorer" : "timeline";
 let folderView: ListViewMode = sessionStorage.getItem(FOLDER_VIEW_KEY) === "list" ? "list" : "grid";
 let fileTab: FileTab = "all";
 let search = "";
@@ -54,8 +54,8 @@ root.innerHTML = `
   <div class="docs-page">
     <div class="docs-toolbar">
       <div class="docs-view-toggle" role="group" aria-label="Page view">
-        <button class="${pageView === "explorer" ? "active" : ""}" data-page-view="explorer" type="button">Explorer view</button>
         <button class="${pageView === "timeline" ? "active" : ""}" data-page-view="timeline" type="button">Timeline view</button>
+        <button class="${pageView === "explorer" ? "active" : ""}" data-page-view="explorer" type="button">Explorer view</button>
       </div>
       <div class="docs-breadcrumb" id="docs-breadcrumb"></div>
     </div>
