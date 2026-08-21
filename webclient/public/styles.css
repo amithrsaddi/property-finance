@@ -590,6 +590,21 @@ textarea {
   margin-bottom: 0.9rem;
 }
 
+.reports-filters {
+  grid-template-columns: 1fr;
+}
+
+.reports-period-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.reports-run {
+  justify-self: start;
+}
+
 .field label {
   display: block;
   margin-bottom: 0.3rem;

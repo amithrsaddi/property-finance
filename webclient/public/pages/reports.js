@@ -452,7 +452,7 @@ var currentYear = String((/* @__PURE__ */ new Date()).getFullYear());
 var initialRange = monthBounds(currentMonth);
 root.innerHTML = `
   <section class="panel">
-    <div class="filters">
+    <div class="filters reports-filters">
       <div class="field">
         <label>Properties</label>
         <select id="propertyScope">
@@ -461,31 +461,33 @@ root.innerHTML = `
           <option value="residential"${initialScope === "residential" ? " selected" : ""}>Residential</option>
         </select>
       </div>
-      <div class="field">
-        <label>Period</label>
-        <select id="periodType">
-          <option value="year"${initialPeriod === "year" ? " selected" : ""}>Year</option>
-          <option value="month"${initialPeriod === "month" ? " selected" : ""}>Month</option>
-          <option value="range"${initialPeriod === "range" ? " selected" : ""}>Date range</option>
-        </select>
+      <div class="reports-period-row">
+        <div class="field">
+          <label>Period</label>
+          <select id="periodType">
+            <option value="year"${initialPeriod === "year" ? " selected" : ""}>Year</option>
+            <option value="month"${initialPeriod === "month" ? " selected" : ""}>Month</option>
+            <option value="range"${initialPeriod === "range" ? " selected" : ""}>Date range</option>
+          </select>
+        </div>
+        <div class="field" id="month-filter-wrap">
+          <label>Month</label>
+          <input id="month" type="month" value="${currentMonth}" />
+        </div>
+        <div class="field" id="year-filter-wrap">
+          <label>Year</label>
+          <input id="year" type="number" min="2000" max="2100" value="${currentYear}" />
+        </div>
+        <div class="field" id="from-filter-wrap">
+          <label>From</label>
+          <input id="from" type="date" value="${initialRange.from}" />
+        </div>
+        <div class="field" id="to-filter-wrap">
+          <label>To</label>
+          <input id="to" type="date" value="${initialRange.to}" />
+        </div>
       </div>
-      <div class="field" id="month-filter-wrap">
-        <label>Month</label>
-        <input id="month" type="month" value="${currentMonth}" />
-      </div>
-      <div class="field" id="year-filter-wrap">
-        <label>Year</label>
-        <input id="year" type="number" min="2000" max="2100" value="${currentYear}" />
-      </div>
-      <div class="field" id="from-filter-wrap">
-        <label>From</label>
-        <input id="from" type="date" value="${initialRange.from}" />
-      </div>
-      <div class="field" id="to-filter-wrap">
-        <label>To</label>
-        <input id="to" type="date" value="${initialRange.to}" />
-      </div>
-      <div class="actions" style="align-self:end"><button class="btn" id="apply" type="button">Run report</button></div>
+      <div class="actions reports-run"><button class="btn" id="apply" type="button">Run report</button></div>
     </div>
     <div class="status" id="status">Choose a period to report on.</div>
   </section>
