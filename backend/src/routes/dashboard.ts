@@ -24,12 +24,31 @@ function round2(value: number): number {
   return Math.round((value || 0) * 100) / 100;
 }
 
+type PortfolioScope = "all" | "rental" | "personal";
+
+function parseScope(value: unknown): PortfolioScope {
+  const scope = String(value || "rental").toLowerCase();
+  return scope === "all" || scope === "rental" || scope === "personal" ? scope : "rental";
+}
+
+function matchesPortfolio(propertyType: unknown, scope: PortfolioScope): boolean {
+  if (scope === "all") {
+    return true;
+  }
+  const type = String(propertyType || "residential");
+  if (scope === "rental") {
+    return type === "buy_to_let" || type === "hmo";
+  }
+  return type === "residential";
+}
+
 router.get("/", async (req: AuthedRequest, res) => {
   const userId = req.user!.id;
   const parsedYear = Number(req.query.year);
   const year = Number.isInteger(parsedYear) && parsedYear >= 2000 && parsedYear <= 2100
     ? parsedYear
     : new Date().getUTCFullYear();
+  const scope = parseScope(req.query.scope);
   const from = `${year}-01-01`;
   const to = `${year}-12-31`;
 
@@ -40,12 +59,32 @@ router.get("/", async (req: AuthedRequest, res) => {
   }
   await refreshMortgagePaymentStatuses(userId);
 
-  const [activeProperties, rents, mortgagePayments, expenses] = await Promise.all([
-    Property.countDocuments({ userId, status: "active" }),
+  const [properties, rents, mortgagePayments, expenses] = await Promise.all([
+    Property.find({ userId }).select("_id propertyType status").lean(),
     RentPayment.find({ userId, expectedPaymentDate: { $gte: from, $lte: to } }).lean(),
     MortgagePayment.find({ userId, dueDate: { $gte: from, $lte: to } }).lean(),
     Expense.find({ userId, expenseDate: { $gte: from, $lte: to } }).lean()
   ]);
+
+  const scopedPropertyIds = new Set(
+    properties.filter((p) => matchesPortfolio(p.propertyType, scope)).map((p) => String(p._id))
+  );
+  const activeProperties = properties.filter(
+    (p) => p.status === "active" && scopedPropertyIds.has(String(p._id))
+  ).length;
+  const scopedMortgageIds = new Set(
+    mortgages.filter((m) => scopedPropertyIds.has(String(m.propertyId))).map((m) => String(m._id))
+  );
+  const scopedRents = rents.filter((rent) => scopedPropertyIds.has(String(rent.propertyId)));
+  const scopedMortgagePayments = mortgagePayments.filter((payment) =>
+    scopedMortgageIds.has(String(payment.mortgageId))
+  );
+  const scopedExpenses = expenses.filter((expense) => {
+    if (!expense.propertyId || expense.scope === "general") {
+      return scope === "all";
+    }
+    return scopedPropertyIds.has(String(expense.propertyId));
+  });
 
   const monthlyRent = emptyMonths();
   const monthlyExpenses = emptyMonths();
@@ -57,7 +96,7 @@ router.get("/", async (req: AuthedRequest, res) => {
   let pendingIncome = 0;
   let pendingIncomeCount = 0;
 
-  for (const rent of rents) {
+  for (const rent of scopedRents) {
     const idx = monthIndex(rent.expectedPaymentDate);
     const received = Number(rent.amountReceived) || 0;
     const expected = Number(rent.expectedAmount) || 0;
@@ -82,7 +121,7 @@ router.get("/", async (req: AuthedRequest, res) => {
   let pendingExpenseCount = 0;
   let paidExpenseCount = 0;
 
-  for (const expense of expenses) {
+  for (const expense of scopedExpenses) {
     const idx = monthIndex(expense.expenseDate);
     const amount = Number(expense.amount) || 0;
     const paid = String(expense.paymentStatus || "paid") === "paid";
@@ -110,7 +149,7 @@ router.get("/", async (req: AuthedRequest, res) => {
   let pendingMortgageCount = 0;
   let paidMortgageCount = 0;
 
-  for (const payment of mortgagePayments) {
+  for (const payment of scopedMortgagePayments) {
     const idx = monthIndex(payment.dueDate);
     const expected = Number(payment.expectedAmount) || 0;
     const paidAmount = payment.amountPaid != null ? Number(payment.amountPaid) || 0 : 0;
@@ -177,7 +216,7 @@ router.get("/", async (req: AuthedRequest, res) => {
         amount: round2(rentReceived),
         expected: round2(rentExpected),
         outstanding: round2(pendingIncome),
-        count: rents.length
+        count: scopedRents.length
       },
       expenses: {
         amount: round2(expensesTotal),

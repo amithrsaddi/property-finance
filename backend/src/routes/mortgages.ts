@@ -11,6 +11,8 @@ router.use(requireAuth);
 
 router.get("/payments/views", async (req: AuthedRequest, res) => {
   const propertyId = req.query.propertyId ? String(req.query.propertyId) : undefined;
+  const yearRaw = req.query.year ? String(req.query.year) : "";
+  const year = /^\d{4}$/.test(yearRaw) ? yearRaw : undefined;
   const mortgageFilter: Record<string, unknown> = { userId: req.user!.id };
   if (propertyId) {
     mortgageFilter.propertyId = propertyId;
@@ -47,7 +49,17 @@ router.get("/payments/views", async (req: AuthedRequest, res) => {
     });
   });
 
-  const upcoming = enriched
+  const years = [
+    ...new Set(
+      enriched
+        .map((p) => Number(String(p.due_date || "").slice(0, 4)))
+        .filter((value) => Number.isInteger(value) && value >= 2000 && value <= 2100)
+    )
+  ].sort((a, b) => b - a);
+
+  const scoped = year ? enriched.filter((p) => String(p.due_date).startsWith(year)) : enriched;
+
+  const upcoming = scoped
     .filter(
       (p) =>
         String(p.due_date) >= today && ["upcoming", "overdue", "partial"].includes(String(p.status))
@@ -55,11 +67,11 @@ router.get("/payments/views", async (req: AuthedRequest, res) => {
     .sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)))
     .slice(0, 100);
 
-  const current = enriched
+  const current = scoped
     .filter((p) => String(p.due_date) >= monthStart && String(p.due_date) <= monthEnd)
     .sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)));
 
-  const past = enriched
+  const past = scoped
     .filter((p) => String(p.due_date) < monthStart || p.status === "paid")
     .sort((a, b) => String(b.due_date).localeCompare(String(a.due_date)))
     .slice(0, 100);
@@ -68,7 +80,105 @@ router.get("/payments/views", async (req: AuthedRequest, res) => {
     .filter((m) => m.status === "active")
     .map((m) => mapMortgage(m, propertyName.get(String(m.propertyId))));
 
-  return res.json({ upcoming, current, past, activeMortgages });
+  return res.json({ upcoming, current, past, activeMortgages, years });
+});
+
+router.post("/payments", async (req: AuthedRequest, res) => {
+  const mortgageId = String(req.body?.mortgageId || "");
+  const mortgage = await Mortgage.findOne({ _id: mortgageId, userId: req.user!.id });
+  if (!mortgage) {
+    return res.status(400).json({ message: "Valid mortgageId is required." });
+  }
+
+  const dueDate = String(req.body?.dueDate || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    return res.status(400).json({ message: "A valid due date is required." });
+  }
+
+  const expectedAmount = Number(req.body?.expectedAmount ?? mortgage.monthlyRepayment);
+  if (!Number.isFinite(expectedAmount) || expectedAmount < 0) {
+    return res.status(400).json({ message: "A valid expected amount is required." });
+  }
+
+  const existing = await MortgagePayment.findOne({
+    mortgageId: mortgage._id,
+    dueDate,
+    userId: req.user!.id
+  });
+  if (existing) {
+    return res.status(409).json({
+      message: "A payment for this mortgage and due date already exists. Edit that payment instead."
+    });
+  }
+
+  const amountPaidRaw = req.body?.amountPaid;
+  const amountPaid =
+    amountPaidRaw === null || amountPaidRaw === "" || amountPaidRaw === undefined
+      ? null
+      : Number(amountPaidRaw);
+  const paidDate = req.body?.paidDate ? String(req.body.paidDate) : null;
+  const notes = String(req.body?.notes || "");
+  let status = String(req.body?.status || "upcoming");
+  if (req.body?.status === undefined) {
+    if (amountPaid != null && amountPaid >= expectedAmount && expectedAmount > 0) {
+      status = "paid";
+    } else if (amountPaid != null && amountPaid > 0) {
+      status = "partial";
+    } else if (dueDate < todayIso()) {
+      status = "overdue";
+    } else {
+      status = "upcoming";
+    }
+  }
+
+  if (status === "paid" && (amountPaid == null || amountPaid <= 0)) {
+    return res.status(400).json({ message: "Paid payments need an amount paid greater than zero." });
+  }
+
+  const nextAmountPaid: number | null =
+    status === "paid" || status === "partial"
+      ? Number(amountPaid ?? expectedAmount)
+      : amountPaid;
+  const nextPaidDate: string | null =
+    status === "paid" || status === "partial" ? String(paidDate || todayIso()) : paidDate;
+
+  try {
+    const created = await MortgagePayment.create({
+      mortgageId: mortgage._id,
+      userId: req.user!.id,
+      dueDate,
+      expectedAmount,
+      amountPaid: null,
+      paidDate: null,
+      status: "upcoming",
+      notes
+    });
+    await applyPaymentUpdate(created, {
+      expectedAmount,
+      amountPaid: nextAmountPaid,
+      paidDate: nextPaidDate,
+      status,
+      notes
+    });
+    await refreshMortgagePaymentStatuses(req.user!.id);
+
+    const property = await Property.findById(mortgage.propertyId).lean();
+    return res.status(201).json({
+      payment: mapMortgagePayment(created.toObject(), {
+        lender: mortgage.lender,
+        property_id: String(mortgage.propertyId),
+        property_name: property?.name
+      }),
+      message: "Mortgage payment added."
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && (error as { code?: number }).code === 11000) {
+      return res.status(409).json({
+        message: "A payment for this mortgage and due date already exists. Edit that payment instead."
+      });
+    }
+    throw error;
+  }
 });
 
 router.post("/payments/:id/pay", async (req: AuthedRequest, res) => {

@@ -412,12 +412,25 @@ if (location.hash === "#settings") {
 }
 var nowYear = (/* @__PURE__ */ new Date()).getFullYear();
 var YEARS = Array.from({ length: 8 }, (_, i) => nowYear - 5 + i);
+var PORTFOLIO_KEY = "pf-dashboard-property-scope";
 var user = getUser();
+function readPortfolio() {
+  const value = sessionStorage.getItem(PORTFOLIO_KEY);
+  return value === "all" || value === "rental" || value === "personal" ? value : "rental";
+}
+var initialPortfolio = readPortfolio();
 var root = mountShell(
   "/dashboard.html",
   `Financial overview ${nowYear}`,
   "Overview of income and expenses",
-  `<label class="year-select"><span>Year</span>
+  `<label class="year-select"><span>Properties</span>
+    <select id="portfolio">
+      <option value="all"${initialPortfolio === "all" ? " selected" : ""}>All</option>
+      <option value="rental"${initialPortfolio === "rental" ? " selected" : ""}>Rental</option>
+      <option value="personal"${initialPortfolio === "personal" ? " selected" : ""}>Personal</option>
+    </select>
+  </label>
+  <label class="year-select"><span>Year</span>
     <select id="year">${YEARS.map((year) => `<option value="${year}" ${year === nowYear ? "selected" : ""}>${year}</option>`).join("")}</select>
   </label>`
 );
@@ -480,10 +493,27 @@ function syncChartMenu() {
 function selectedYear() {
   return document.getElementById("year").value;
 }
+function selectedPortfolio() {
+  const value = document.getElementById("portfolio").value;
+  return value === "all" || value === "rental" || value === "personal" ? value : "rental";
+}
 function setTitle(year) {
   const heading = document.querySelector(".topbar h1");
   if (heading) {
     heading.textContent = `Financial overview ${year}`;
+  }
+}
+function setSubtitle(scope) {
+  const subtitle = document.querySelector(".topbar p");
+  if (!subtitle) {
+    return;
+  }
+  if (scope === "rental") {
+    subtitle.textContent = "Income and expenses for buy-to-let properties.";
+  } else if (scope === "personal") {
+    subtitle.textContent = "Income and expenses for residential properties.";
+  } else {
+    subtitle.textContent = "Overview of income and expenses";
   }
 }
 function pct(part, total) {
@@ -757,9 +787,12 @@ function render(data) {
 async function loadOverview() {
   const status = document.getElementById("status");
   const year = selectedYear();
+  const scope = selectedPortfolio();
+  sessionStorage.setItem(PORTFOLIO_KEY, scope);
   setTitle(year);
+  setSubtitle(scope);
   try {
-    cache = await api(`/dashboard${qs({ year })}`);
+    cache = await api(`/dashboard${qs({ year, scope })}`);
     render(cache);
     setStatus(status, "", "info");
   } catch (error) {
@@ -767,6 +800,9 @@ async function loadOverview() {
   }
 }
 document.getElementById("year")?.addEventListener("change", () => {
+  void loadOverview();
+});
+document.getElementById("portfolio")?.addEventListener("change", () => {
   void loadOverview();
 });
 document.getElementById("period-toggle")?.addEventListener("click", (event) => {

@@ -2,6 +2,7 @@ import { api, formatDateDmY, getUser, money, qs, labelize } from "../lib.js";
 import {
   bindListChrome,
   bindRowMenus,
+  escapeHtml,
   matchesQuery,
   renderDataList,
   searchFieldHtml,
@@ -15,7 +16,8 @@ const VIEW_KEY = "pf-payments-view";
 const root = mountShell(
   "/payments.html",
   "Payments",
-  "Upcoming, current, and past mortgage payments."
+  "Upcoming, current, and past mortgage payments.",
+  `<button class="btn" id="add-payment-btn" type="button">+ Add Mortgage Payment</button>`
 );
 const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
@@ -28,10 +30,10 @@ root.innerHTML = `
           <button class="seg-tab active" data-view="upcoming" type="button">Upcoming</button>
           <button class="seg-tab" data-view="current" type="button">Current</button>
           <button class="seg-tab" data-view="past" type="button">Past</button>
-          <button class="seg-tab" data-view="mortgages" type="button">Mortgages</button>
         </div>
         <div class="table-filters">
           <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+          <div class="field"><label>Year</label><select id="filterYear"><option value="">All</option></select></div>
         </div>
       </div>
       <div class="table-toolbar-end">
@@ -57,9 +59,15 @@ root.innerHTML = `
       <form id="payment-form" class="stack">
         <input type="hidden" name="id" />
         <div class="form-grid">
-          <div class="field"><label>Property</label><input name="propertyName" disabled /></div>
-          <div class="field"><label>Lender</label><input name="lender" disabled /></div>
-          <div class="field"><label>Due date</label><input name="dueDate" type="date" disabled /></div>
+          <div class="field" id="mortgage-field" hidden style="grid-column:1/-1">
+            <label>Mortgage</label>
+            <select name="mortgageId" id="mortgageId">
+              <option value="">Select mortgage</option>
+            </select>
+          </div>
+          <div class="field" id="property-name-field"><label>Property</label><input name="propertyName" disabled /></div>
+          <div class="field" id="lender-field"><label>Lender</label><input name="lender" disabled /></div>
+          <div class="field"><label>Due date</label><input name="dueDate" type="date" /></div>
           <div class="field"><label>Expected amount</label><input name="expectedAmount" type="number" step="0.01" required /></div>
           <div class="field"><label>Amount paid</label><input name="amountPaid" type="number" step="0.01" /></div>
           <div class="field"><label>Paid date</label><input name="paidDate" type="date" /></div>
@@ -76,7 +84,7 @@ root.innerHTML = `
         <div class="status" id="payment-form-status" hidden></div>
         <div class="modal-actions">
           <button class="btn secondary" id="cancel-payment-modal" type="button">Cancel</button>
-          <button class="btn" type="submit">Save payment</button>
+          <button class="btn" type="submit" id="payment-submit-btn">Save payment</button>
         </div>
       </form>
     </div>
@@ -88,10 +96,11 @@ type Views = {
   current: Array<Record<string, unknown>>;
   past: Array<Record<string, unknown>>;
   activeMortgages: Array<Record<string, unknown>>;
+  years?: number[];
 };
 
 let views: Views | null = null;
-let activeView: "upcoming" | "current" | "past" | "mortgages" = "upcoming";
+let activeView: "upcoming" | "current" | "past" = "upcoming";
 let search = "";
 let sortBy = "due";
 let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
@@ -136,10 +145,42 @@ async function loadProperties(): Promise<void> {
   }
 }
 
+function fillYearOptions(years: number[]): void {
+  const select = document.getElementById("filterYear") as HTMLSelectElement;
+  const selected = select.value;
+  const unique = [...new Set(years.filter((year) => Number.isInteger(year)))].sort((a, b) => b - a);
+  select.innerHTML = `<option value="">All</option>${unique
+    .map((year) => `<option value="${year}">${year}</option>`)
+    .join("")}`;
+  if (selected && unique.includes(Number(selected))) {
+    select.value = selected;
+  }
+}
+
 async function loadViews(): Promise<void> {
   const propertyId = (document.getElementById("filterProperty") as HTMLSelectElement).value;
-  views = await api(`/mortgages/payments/views${qs({ propertyId })}`);
+  const year = (document.getElementById("filterYear") as HTMLSelectElement).value;
+  views = await api<Views>(`/mortgages/payments/views${qs({ propertyId, year })}`);
+  fillYearOptions(views.years || []);
+  fillMortgageOptions();
   render();
+}
+
+function fillMortgageOptions(): void {
+  const select = field<HTMLSelectElement>(paymentForm, "mortgageId");
+  const mortgages = views?.activeMortgages || [];
+  const selected = select.value;
+  select.innerHTML = `<option value="">Select mortgage</option>${mortgages
+    .map((m) => {
+      const id = escapeHtml(String(m.id || m._id || ""));
+      const label = escapeHtml(`${m.property_name || "Property"} (${m.lender || "Lender"})`);
+      const amount = escapeHtml(String(m.monthly_repayment ?? ""));
+      return `<option value="${id}" data-amount="${amount}">${label}</option>`;
+    })
+    .join("")}`;
+  if (selected && [...select.options].some((option) => option.value === selected)) {
+    select.value = selected;
+  }
 }
 
 function sortRows(rows: Array<Record<string, unknown>>, keys: string[]): Array<Record<string, unknown>> {
@@ -169,28 +210,8 @@ function render(): void {
   });
   const content = document.getElementById("content")!;
 
-  if (activeView === "mortgages") {
-    const rows = sortRows(views.activeMortgages, ["property_name", "lender", "status"]);
-    content.innerHTML = renderDataList(
-      rows.map((m) => ({
-        id: String(m.id || m._id || m.property_name),
-        title: String(m.property_name || "Property"),
-        subtitle: String(m.lender || "Lender"),
-        href: m.property_id ? `/property.html?id=${m.property_id}` : undefined,
-        status: "active",
-        statusLabel: "Active",
-        summaryTitle: `Balance ${money(Number(m.outstanding_balance), user.preferredCurrency)}`,
-        summarySub: `Rate ${m.interest_rate}% · Monthly ${money(Number(m.monthly_repayment), user.preferredCurrency)}`
-      })),
-      view,
-      `No active mortgages. Add one from <a href="/rates.html">Rates</a>.`,
-      null
-    );
-    return;
-  }
-
   const source = views[activeView];
-  const rows = sortRows(source, ["property_name", "lender", "status", "notes"]);
+  const rows = sortRows(source, ["property_name", "lender", "status", "notes", "due_date", "paid_date"]);
   content.innerHTML = renderDataList(
     rows.map((r) => {
       const id = String(r.id || r._id);
@@ -244,7 +265,66 @@ function isoDate(value: unknown): string {
   return match ? match[1] : "";
 }
 
+function setCreateMode(create: boolean): void {
+  const mortgageField = document.getElementById("mortgage-field") as HTMLElement;
+  const propertyField = document.getElementById("property-name-field") as HTMLElement;
+  const lenderField = document.getElementById("lender-field") as HTMLElement;
+  const mortgageSelect = field<HTMLSelectElement>(paymentForm, "mortgageId");
+  const dueDate = field<HTMLInputElement>(paymentForm, "dueDate");
+  mortgageField.hidden = !create;
+  propertyField.hidden = create;
+  lenderField.hidden = create;
+  mortgageSelect.required = create;
+  dueDate.required = create;
+  dueDate.disabled = !create;
+  document.getElementById("payment-submit-btn")!.textContent = create ? "Add payment" : "Save payment";
+}
+
+function fillExpectedFromMortgage(): void {
+  const select = field<HTMLSelectElement>(paymentForm, "mortgageId");
+  const option = select.selectedOptions[0];
+  const amount = option?.dataset.amount || "";
+  const expected = field<HTMLInputElement>(paymentForm, "expectedAmount");
+  if (amount) {
+    expected.value = amount;
+  }
+}
+
+function openPaymentCreate(): void {
+  const mortgages = views?.activeMortgages || [];
+  if (!mortgages.length) {
+    setStatus(
+      document.getElementById("status"),
+      "Add a mortgage on Rates before recording a payment.",
+      "error"
+    );
+    return;
+  }
+  paymentForm.reset();
+  setCreateMode(true);
+  fillMortgageOptions();
+  field<HTMLInputElement>(paymentForm, "id").value = "";
+  field<HTMLInputElement>(paymentForm, "dueDate").value = new Date().toISOString().slice(0, 10);
+  field<HTMLSelectElement>(paymentForm, "status").value = "upcoming";
+  const filterProperty = (document.getElementById("filterProperty") as HTMLSelectElement).value;
+  const preferred = presetPropertyId || filterProperty;
+  if (preferred) {
+    const match = mortgages.find((m) => String(m.property_id) === preferred);
+    if (match) {
+      field<HTMLSelectElement>(paymentForm, "mortgageId").value = String(match.id || match._id);
+    }
+  } else if (mortgages.length === 1) {
+    field<HTMLSelectElement>(paymentForm, "mortgageId").value = String(mortgages[0]!.id || mortgages[0]!._id);
+  }
+  fillExpectedFromMortgage();
+  document.getElementById("payment-form-title")!.textContent = "Add mortgage payment";
+  setStatus(formStatusEl(), "", "info");
+  openBackdrop(paymentModal);
+}
+
 function openPaymentEditor(row: Record<string, unknown>, markPaid: boolean): void {
+  paymentForm.reset();
+  setCreateMode(false);
   document.getElementById("payment-form-title")!.textContent = markPaid
     ? "Mark payment as paid"
     : "Edit payment";
@@ -288,8 +368,13 @@ paymentForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   event.stopPropagation();
   const paymentId = String(field<HTMLInputElement>(paymentForm, "id").value || "").trim();
-  if (!paymentId || paymentId === "undefined") {
-    setStatus(formStatusEl(), "Missing payment id. Re-open Edit and try again.", "error");
+  const creating = !paymentId || paymentId === "undefined";
+  if (creating && !field<HTMLSelectElement>(paymentForm, "mortgageId").value) {
+    setStatus(formStatusEl(), "Select a mortgage.", "error");
+    return;
+  }
+  if (creating && !field<HTMLInputElement>(paymentForm, "dueDate").value) {
+    setStatus(formStatusEl(), "A due date is required.", "error");
     return;
   }
   syncPaidFields();
@@ -297,21 +382,47 @@ paymentForm.addEventListener("submit", async (event) => {
   const amountPaidRaw = field<HTMLInputElement>(paymentForm, "amountPaid").value.trim();
   const status = field<HTMLSelectElement>(paymentForm, "status").value || "upcoming";
   const amountPaid = amountPaidRaw === "" ? null : Number(amountPaidRaw);
+  const dueDate = field<HTMLInputElement>(paymentForm, "dueDate").value;
+  const payload = {
+    expectedAmount,
+    amountPaid,
+    paidDate: field<HTMLInputElement>(paymentForm, "paidDate").value || null,
+    status,
+    notes: field<HTMLTextAreaElement>(paymentForm, "notes").value
+  };
   try {
-    await api(`/mortgages/payments/${paymentId}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        expectedAmount,
-        amountPaid,
-        paidDate: field<HTMLInputElement>(paymentForm, "paidDate").value || null,
-        status,
-        notes: field<HTMLTextAreaElement>(paymentForm, "notes").value
-      })
-    });
-    setStatus(document.getElementById("status"), "Payment updated.", "success");
+    if (creating) {
+      await api("/mortgages/payments", {
+        method: "POST",
+        body: JSON.stringify({
+          ...payload,
+          mortgageId: field<HTMLSelectElement>(paymentForm, "mortgageId").value,
+          dueDate
+        })
+      });
+      setStatus(document.getElementById("status"), "Mortgage payment added.", "success");
+    } else {
+      await api(`/mortgages/payments/${paymentId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      setStatus(document.getElementById("status"), "Payment updated.", "success");
+    }
     closeBackdrop(paymentModal);
-    if (status === "paid" && activeView === "upcoming") {
+    if (status === "paid") {
       activeView = "past";
+    } else if (dueDate) {
+      const today = new Date().toISOString().slice(0, 10);
+      const monthStart = `${today.slice(0, 8)}01`;
+      const monthEndDate = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0));
+      const monthEnd = monthEndDate.toISOString().slice(0, 10);
+      if (dueDate >= monthStart && dueDate <= monthEnd) {
+        activeView = "current";
+      } else if (dueDate >= today) {
+        activeView = "upcoming";
+      } else {
+        activeView = "past";
+      }
     }
     await loadViews();
   } catch (error) {
@@ -320,6 +431,12 @@ paymentForm.addEventListener("submit", async (event) => {
 });
 
 field<HTMLSelectElement>(paymentForm, "status").addEventListener("change", syncPaidFields);
+field<HTMLSelectElement>(paymentForm, "mortgageId").addEventListener("change", fillExpectedFromMortgage);
+
+document.getElementById("add-payment-btn")?.addEventListener("click", () => {
+  openMenuId = null;
+  openPaymentCreate();
+});
 
 document.getElementById("close-payment-modal")?.addEventListener("click", () => closeBackdrop(paymentModal));
 document.getElementById("cancel-payment-modal")?.addEventListener("click", () => closeBackdrop(paymentModal));
@@ -348,8 +465,7 @@ document.getElementById("view-tabs")?.addEventListener("click", (event) => {
   if (
     target.dataset.view === "upcoming" ||
     target.dataset.view === "current" ||
-    target.dataset.view === "past" ||
-    target.dataset.view === "mortgages"
+    target.dataset.view === "past"
   ) {
     activeView = target.dataset.view;
     openMenuId = null;
@@ -357,6 +473,9 @@ document.getElementById("view-tabs")?.addEventListener("click", (event) => {
   }
 });
 document.getElementById("filterProperty")?.addEventListener("change", () => {
+  void loadViews();
+});
+document.getElementById("filterYear")?.addEventListener("change", () => {
   void loadViews();
 });
 

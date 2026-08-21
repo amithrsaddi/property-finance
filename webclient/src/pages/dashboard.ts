@@ -9,13 +9,29 @@ if (location.hash === "#settings") {
 
 const nowYear = new Date().getFullYear();
 const YEARS = Array.from({ length: 8 }, (_, i) => nowYear - 5 + i);
+const PORTFOLIO_KEY = "pf-dashboard-property-scope";
+type PortfolioScope = "all" | "rental" | "personal";
 const user = getUser()!;
+
+function readPortfolio(): PortfolioScope {
+  const value = sessionStorage.getItem(PORTFOLIO_KEY);
+  return value === "all" || value === "rental" || value === "personal" ? value : "rental";
+}
+
+const initialPortfolio = readPortfolio();
 
 const root = mountShell(
   "/dashboard.html",
   `Financial overview ${nowYear}`,
   "Overview of income and expenses",
-  `<label class="year-select"><span>Year</span>
+  `<label class="year-select"><span>Properties</span>
+    <select id="portfolio">
+      <option value="all"${initialPortfolio === "all" ? " selected" : ""}>All</option>
+      <option value="rental"${initialPortfolio === "rental" ? " selected" : ""}>Rental</option>
+      <option value="personal"${initialPortfolio === "personal" ? " selected" : ""}>Personal</option>
+    </select>
+  </label>
+  <label class="year-select"><span>Year</span>
     <select id="year">${YEARS.map((year) => `<option value="${year}" ${year === nowYear ? "selected" : ""}>${year}</option>`).join("")}</select>
   </label>`
 );
@@ -112,10 +128,29 @@ function selectedYear(): string {
   return (document.getElementById("year") as HTMLSelectElement).value;
 }
 
+function selectedPortfolio(): PortfolioScope {
+  const value = (document.getElementById("portfolio") as HTMLSelectElement).value;
+  return value === "all" || value === "rental" || value === "personal" ? value : "rental";
+}
+
 function setTitle(year: string): void {
   const heading = document.querySelector(".topbar h1");
   if (heading) {
     heading.textContent = `Financial overview ${year}`;
+  }
+}
+
+function setSubtitle(scope: PortfolioScope): void {
+  const subtitle = document.querySelector(".topbar p");
+  if (!subtitle) {
+    return;
+  }
+  if (scope === "rental") {
+    subtitle.textContent = "Income and expenses for buy-to-let properties.";
+  } else if (scope === "personal") {
+    subtitle.textContent = "Income and expenses for residential properties.";
+  } else {
+    subtitle.textContent = "Overview of income and expenses";
   }
 }
 
@@ -426,9 +461,12 @@ function render(data: Overview): void {
 async function loadOverview(): Promise<void> {
   const status = document.getElementById("status") as HTMLDivElement;
   const year = selectedYear();
+  const scope = selectedPortfolio();
+  sessionStorage.setItem(PORTFOLIO_KEY, scope);
   setTitle(year);
+  setSubtitle(scope);
   try {
-    cache = await api<Overview>(`/dashboard${qs({ year })}`);
+    cache = await api<Overview>(`/dashboard${qs({ year, scope })}`);
     render(cache);
     setStatus(status, "", "info");
   } catch (error) {
@@ -437,6 +475,9 @@ async function loadOverview(): Promise<void> {
 }
 
 document.getElementById("year")?.addEventListener("change", () => {
+  void loadOverview();
+});
+document.getElementById("portfolio")?.addEventListener("change", () => {
   void loadOverview();
 });
 
