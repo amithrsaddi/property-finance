@@ -1,3 +1,26 @@
+export type PropertyMeta = { name?: string; hasImage?: boolean };
+
+function propertyMeta(value?: string | PropertyMeta | null): { name: string; hasImage: boolean } {
+  if (!value) {
+    return { name: "", hasImage: false };
+  }
+  if (typeof value === "string") {
+    return { name: value, hasImage: false };
+  }
+  return { name: String(value.name || ""), hasImage: Boolean(value.hasImage) };
+}
+
+export function lookupProperties(
+  properties: Array<{ _id?: unknown; name?: unknown; hasImage?: unknown }>
+): Map<string, PropertyMeta> {
+  return new Map(
+    properties.map((property) => [
+      String(property._id),
+      { name: String(property.name || ""), hasImage: Boolean(property.hasImage) }
+    ])
+  );
+}
+
 export function idOf(doc: { _id?: { toString(): string } | string; id?: string } | null | undefined): string {
   if (!doc) {
     return "";
@@ -25,6 +48,7 @@ export function mapProperty(doc: Record<string, unknown> & { _id?: { toString():
     expectedMonthlyRent: doc.expectedMonthlyRent ?? 0,
     notes: doc.notes ?? "",
     status: doc.status ?? "active",
+    hasImage: Boolean(doc.hasImage),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt
   };
@@ -32,12 +56,14 @@ export function mapProperty(doc: Record<string, unknown> & { _id?: { toString():
 
 export function mapRentPayment(
   doc: Record<string, unknown> & { _id?: { toString(): string } },
-  propertyName?: string
+  property?: string | PropertyMeta | null
 ) {
+  const meta = propertyMeta(property);
   return {
     id: idOf(doc),
     property_id: String(doc.propertyId ?? ""),
-    property_name: propertyName ?? doc.property_name ?? "",
+    property_name: meta.name || String(doc.property_name ?? ""),
+    hasImage: meta.hasImage,
     user_id: String(doc.userId ?? ""),
     rental_period: doc.rentalPeriod,
     expected_amount: doc.expectedAmount,
@@ -51,12 +77,14 @@ export function mapRentPayment(
 
 export function mapMortgage(
   doc: Record<string, unknown> & { _id?: { toString(): string } },
-  propertyName?: string
+  property?: string | PropertyMeta | null
 ) {
+  const meta = propertyMeta(property);
   return {
     id: idOf(doc),
     property_id: String(doc.propertyId ?? ""),
-    property_name: propertyName ?? "",
+    property_name: meta.name,
+    hasImage: meta.hasImage,
     user_id: String(doc.userId ?? ""),
     lender: doc.lender,
     original_loan_amount: doc.originalLoanAmount,
@@ -75,7 +103,7 @@ export function mapMortgage(
 
 export function mapMortgagePayment(
   doc: Record<string, unknown> & { _id?: { toString(): string } },
-  extras: { lender?: string; property_id?: string; property_name?: string } = {}
+  extras: { lender?: string; property_id?: string; property_name?: string; hasImage?: boolean } = {}
 ) {
   return {
     id: idOf(doc),
@@ -89,20 +117,23 @@ export function mapMortgagePayment(
     notes: doc.notes ?? "",
     lender: extras.lender ?? doc.lender ?? "",
     property_id: extras.property_id ?? String(doc.propertyId ?? ""),
-    property_name: extras.property_name ?? doc.property_name ?? ""
+    property_name: extras.property_name ?? doc.property_name ?? "",
+    hasImage: Boolean(extras.hasImage)
   };
 }
 
 export function mapExpense(
   doc: Record<string, unknown> & { _id?: { toString(): string } },
-  propertyName?: string | null,
+  property?: string | PropertyMeta | null,
   extras: { documentName?: string | null } = {}
 ) {
+  const meta = propertyMeta(property);
   return {
     id: idOf(doc),
     user_id: String(doc.userId ?? ""),
     property_id: doc.propertyId ? String(doc.propertyId) : null,
-    property_name: propertyName ?? null,
+    property_name: meta.name || null,
+    hasImage: meta.hasImage,
     scope: doc.scope,
     category: doc.category,
     description: doc.description ?? "",

@@ -3,7 +3,7 @@ import { requireAuth } from "../auth.js";
 import { todayIso } from "../dates.js";
 import { ensureMortgageSchedule, refreshMortgagePaymentStatuses } from "../domain.js";
 import { Mortgage, MortgagePayment, Property } from "../models.js";
-import { mapMortgage, mapMortgagePayment } from "../serialize.js";
+import { lookupProperties, mapMortgage, mapMortgagePayment } from "../serialize.js";
 import type { AuthedRequest } from "../types.js";
 
 const router = Router();
@@ -37,15 +37,17 @@ router.get("/payments/views", async (req: AuthedRequest, res) => {
 
   const propertyIds = [...new Set(mortgages.map((m) => String(m.propertyId)))];
   const properties = await Property.find({ _id: { $in: propertyIds } }).lean();
-  const propertyName = new Map(properties.map((p) => [String(p._id), p.name]));
+  const propertyById = lookupProperties(properties);
   const mortgageById = new Map(mortgages.map((m) => [String(m._id), m]));
 
   const enriched = payments.map((p) => {
     const mortgage = mortgageById.get(String(p.mortgageId));
+    const property = mortgage ? propertyById.get(String(mortgage.propertyId)) : undefined;
     return mapMortgagePayment(p, {
       lender: mortgage?.lender,
       property_id: mortgage ? String(mortgage.propertyId) : "",
-      property_name: mortgage ? propertyName.get(String(mortgage.propertyId)) : ""
+      property_name: property?.name,
+      hasImage: property?.hasImage
     });
   });
 
@@ -64,8 +66,7 @@ router.get("/payments/views", async (req: AuthedRequest, res) => {
       (p) =>
         String(p.due_date) >= today && ["upcoming", "overdue", "partial"].includes(String(p.status))
     )
-    .sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)))
-    .slice(0, 100);
+    .sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)));
 
   const current = scoped
     .filter((p) => String(p.due_date) >= monthStart && String(p.due_date) <= monthEnd)
@@ -73,12 +74,11 @@ router.get("/payments/views", async (req: AuthedRequest, res) => {
 
   const past = scoped
     .filter((p) => String(p.due_date) < monthStart || p.status === "paid")
-    .sort((a, b) => String(b.due_date).localeCompare(String(a.due_date)))
-    .slice(0, 100);
+    .sort((a, b) => String(b.due_date).localeCompare(String(a.due_date)));
 
   const activeMortgages = mortgages
     .filter((m) => m.status === "active")
-    .map((m) => mapMortgage(m, propertyName.get(String(m.propertyId))));
+    .map((m) => mapMortgage(m, propertyById.get(String(m.propertyId))));
 
   return res.json({ upcoming, current, past, activeMortgages, years });
 });
@@ -167,7 +167,8 @@ router.post("/payments", async (req: AuthedRequest, res) => {
       payment: mapMortgagePayment(created.toObject(), {
         lender: mortgage.lender,
         property_id: String(mortgage.propertyId),
-        property_name: property?.name
+        property_name: property?.name,
+        hasImage: Boolean(property?.hasImage)
       }),
       message: "Mortgage payment added."
     });
@@ -179,6 +180,46 @@ router.post("/payments", async (req: AuthedRequest, res) => {
     }
     throw error;
   }
+});
+
+router.post("/payments/bulk", async (req: AuthedRequest, res) => {
+  const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(String).filter(Boolean))];
+  const action = String(req.body?.status || "").toLowerCase();
+  if (!ids.length) {
+    return res.status(400).json({ message: "Select at least one payment." });
+  }
+  if (ids.length > 100) {
+    return res.status(400).json({ message: "You can update up to 100 payments at a time." });
+  }
+  if (action !== "paid" && action !== "unpaid") {
+    return res.status(400).json({ message: "Status must be paid or unpaid." });
+  }
+
+  const validIds = ids.filter((id) => /^[a-fA-F0-9]{24}$/.test(id));
+  const payments = await MortgagePayment.find({ _id: { $in: validIds }, userId: req.user!.id });
+  const today = todayIso();
+  for (const existing of payments) {
+    if (action === "paid") {
+      await applyPaymentUpdate(existing, {
+        amountPaid: existing.expectedAmount,
+        paidDate: today,
+        status: "paid",
+        notes: String(existing.notes || "")
+      });
+    } else {
+      await applyPaymentUpdate(existing, {
+        amountPaid: null,
+        paidDate: null,
+        status: String(existing.dueDate) < today ? "overdue" : "upcoming",
+        notes: String(existing.notes || "")
+      });
+    }
+  }
+
+  return res.json({
+    updated: payments.length,
+    message: `Updated ${payments.length} payment${payments.length === 1 ? "" : "s"}.`
+  });
 });
 
 router.post("/payments/:id/pay", async (req: AuthedRequest, res) => {
@@ -285,10 +326,10 @@ router.get("/", async (req: AuthedRequest, res) => {
 
   const propertyIds = [...new Set(rows.map((r) => String(r.propertyId)))];
   const properties = await Property.find({ _id: { $in: propertyIds } }).lean();
-  const nameById = new Map(properties.map((p) => [String(p._id), p.name]));
+  const propertyById = lookupProperties(properties);
 
   return res.json({
-    mortgages: rows.map((r) => mapMortgage(r, nameById.get(String(r.propertyId))))
+    mortgages: rows.map((r) => mapMortgage(r, propertyById.get(String(r.propertyId))))
   });
 });
 
@@ -334,7 +375,7 @@ router.post("/", async (req: AuthedRequest, res) => {
   await refreshMortgagePaymentStatuses(req.user!.id);
 
   return res.status(201).json({
-    mortgage: mapMortgage(created.toObject(), property.name),
+    mortgage: mapMortgage(created.toObject(), property),
     message: "Mortgage created."
   });
 });
@@ -377,7 +418,7 @@ router.put("/:id", async (req: AuthedRequest, res) => {
 
   const property = await Property.findById(existing.propertyId).lean();
   return res.json({
-    mortgage: mapMortgage(existing.toObject(), property?.name),
+    mortgage: mapMortgage(existing.toObject(), property),
     message: "Mortgage updated."
   });
 });

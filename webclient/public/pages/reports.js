@@ -112,6 +112,14 @@ function currentMonthValue() {
   const now = /* @__PURE__ */ new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
+function formatDateDmY(value) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!match) {
+    return raw || "-";
+  }
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
 
 // src/shell.ts
 var MORTGAGES_NAV_KEY = "pf-mortgages-nav-open";
@@ -409,20 +417,77 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/reports.ts
+var PERIOD_KEY = "pf-reports-period-v2";
+var SCOPE_KEY = "pf-reports-property-scope";
+function readPeriod() {
+  const value = sessionStorage.getItem(PERIOD_KEY);
+  return value === "month" || value === "range" ? value : "year";
+}
+function readScope() {
+  const value = sessionStorage.getItem(SCOPE_KEY);
+  return value === "rental" || value === "residential" ? value : "all";
+}
+function monthBounds(monthValue) {
+  const [year, month] = monthValue.split("-").map(Number);
+  if (!year || !month) {
+    const now = /* @__PURE__ */ new Date();
+    const from2 = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const last2 = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    return { from: from2, to: `${from2.slice(0, 8)}${String(last2).padStart(2, "0")}` };
+  }
+  const last = new Date(year, month, 0).getDate();
+  const from = `${year}-${String(month).padStart(2, "0")}-01`;
+  return { from, to: `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}` };
+}
 var root = mountShell(
   "/reports.html",
   "Reports",
   "Income, costs, cash flow, and profitability by property."
 );
 var user = getUser();
+var initialPeriod = readPeriod();
+var initialScope = readScope();
+var currentMonth = currentMonthValue();
+var currentYear = String((/* @__PURE__ */ new Date()).getFullYear());
+var initialRange = monthBounds(currentMonth);
 root.innerHTML = `
   <section class="panel">
     <div class="filters">
-      <div class="field"><label>Month</label><input id="month" type="month" value="${currentMonthValue()}" /></div>
-      <div class="field"><label>Or year</label><input id="year" type="number" min="2000" max="2100" placeholder="e.g. 2026" /></div>
+      <div class="field">
+        <label>Properties</label>
+        <select id="propertyScope">
+          <option value="all"${initialScope === "all" ? " selected" : ""}>All</option>
+          <option value="rental"${initialScope === "rental" ? " selected" : ""}>Rental</option>
+          <option value="residential"${initialScope === "residential" ? " selected" : ""}>Residential</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Period</label>
+        <select id="periodType">
+          <option value="year"${initialPeriod === "year" ? " selected" : ""}>Year</option>
+          <option value="month"${initialPeriod === "month" ? " selected" : ""}>Month</option>
+          <option value="range"${initialPeriod === "range" ? " selected" : ""}>Date range</option>
+        </select>
+      </div>
+      <div class="field" id="month-filter-wrap">
+        <label>Month</label>
+        <input id="month" type="month" value="${currentMonth}" />
+      </div>
+      <div class="field" id="year-filter-wrap">
+        <label>Year</label>
+        <input id="year" type="number" min="2000" max="2100" value="${currentYear}" />
+      </div>
+      <div class="field" id="from-filter-wrap">
+        <label>From</label>
+        <input id="from" type="date" value="${initialRange.from}" />
+      </div>
+      <div class="field" id="to-filter-wrap">
+        <label>To</label>
+        <input id="to" type="date" value="${initialRange.to}" />
+      </div>
       <div class="actions" style="align-self:end"><button class="btn" id="apply" type="button">Run report</button></div>
     </div>
-    <div class="status" id="status">Choose a month or year to report on.</div>
+    <div class="status" id="status">Choose a period to report on.</div>
   </section>
   <section class="metrics" id="totals"></section>
   <section class="panel">
@@ -430,10 +495,59 @@ root.innerHTML = `
     <div class="table-wrap" id="list"></div>
   </section>
 `;
-async function loadReport() {
+function periodType() {
+  const value = document.getElementById("periodType").value;
+  return value === "month" || value === "range" ? value : "year";
+}
+function syncPeriodFilterUi() {
+  const period = periodType();
+  sessionStorage.setItem(PERIOD_KEY, period);
+  document.getElementById("month-filter-wrap").hidden = period !== "month";
+  document.getElementById("year-filter-wrap").hidden = period !== "year";
+  document.getElementById("from-filter-wrap").hidden = period !== "range";
+  document.getElementById("to-filter-wrap").hidden = period !== "range";
+}
+function propertyScope() {
+  const value = document.getElementById("propertyScope").value;
+  return value === "rental" || value === "residential" ? value : "all";
+}
+function reportQuery() {
+  const scope = propertyScope();
+  sessionStorage.setItem(SCOPE_KEY, scope);
+  const period = periodType();
+  if (period === "year") {
+    const year = document.getElementById("year").value.trim();
+    if (!/^\d{4}$/.test(year)) {
+      setStatus(document.getElementById("status"), "Enter a valid year.", "error");
+      return null;
+    }
+    return qs({ year, scope });
+  }
+  if (period === "range") {
+    const from = document.getElementById("from").value;
+    const to = document.getElementById("to").value;
+    if (!from || !to) {
+      setStatus(document.getElementById("status"), "Choose a from and to date.", "error");
+      return null;
+    }
+    if (from > to) {
+      setStatus(document.getElementById("status"), "From date must be on or before the to date.", "error");
+      return null;
+    }
+    return qs({ from, to, scope });
+  }
   const month = document.getElementById("month").value;
-  const year = document.getElementById("year").value;
-  const query = year ? qs({ year }) : qs({ month });
+  if (!month) {
+    setStatus(document.getElementById("status"), "Choose a month.", "error");
+    return null;
+  }
+  return qs({ month, scope });
+}
+async function loadReport() {
+  const query = reportQuery();
+  if (!query) {
+    return;
+  }
   try {
     const data = await api(`/reports${query}`);
     const t = data.totals;
@@ -449,7 +563,7 @@ async function loadReport() {
     if (!data.properties.length) {
       list.innerHTML = `<p class="empty">No properties to report on.</p>`;
     } else {
-      list.innerHTML = `<table>
+      list.innerHTML = `<table class="reports-table">
         <thead><tr><th>Property</th><th>Rent</th><th>Mortgage</th><th>Expenses</th><th>Net</th></tr></thead>
         <tbody>
           ${data.properties.map(
@@ -466,14 +580,34 @@ async function loadReport() {
     }
     setStatus(
       document.getElementById("status"),
-      `Report for ${data.from} to ${data.to}.`,
+      `Report for ${formatDateDmY(data.from)} to ${formatDateDmY(data.to)}.`,
       "success"
     );
   } catch (error) {
     setStatus(document.getElementById("status"), error.message, "error");
   }
 }
+syncPeriodFilterUi();
 document.getElementById("apply")?.addEventListener("click", () => {
+  void loadReport();
+});
+document.getElementById("periodType")?.addEventListener("change", () => {
+  syncPeriodFilterUi();
+  void loadReport();
+});
+document.getElementById("month")?.addEventListener("change", () => {
+  void loadReport();
+});
+document.getElementById("year")?.addEventListener("change", () => {
+  void loadReport();
+});
+document.getElementById("from")?.addEventListener("change", () => {
+  void loadReport();
+});
+document.getElementById("propertyScope")?.addEventListener("change", () => {
+  void loadReport();
+});
+document.getElementById("to")?.addEventListener("change", () => {
   void loadReport();
 });
 void loadReport();

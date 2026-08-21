@@ -74,6 +74,20 @@ export function decodeFileData(raw: unknown): Buffer | null {
   }
 }
 
+export function validateImage(filename: string, mimeType: string, size: number): string | null {
+  const ext = extensionOf(filename);
+  const mime = guessMime(filename, mimeType).toLowerCase();
+  const imageExt = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
+  const imageMime = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+  if (!imageExt.has(ext) && !imageMime.has(mime)) {
+    return "Use a JPG, PNG, GIF, or WebP image.";
+  }
+  if (size > MAX_FILE_BYTES) {
+    return "Images must be 4 MB or smaller.";
+  }
+  return null;
+}
+
 export function validateFile(filename: string, mimeType: string, size: number): string | null {
   const ext = extensionOf(filename);
   const mime = String(mimeType || "").toLowerCase();

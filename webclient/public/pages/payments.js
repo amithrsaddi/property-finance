@@ -66,6 +66,29 @@ async function api(path, options = {}) {
   }
   return data;
 }
+async function apiFile(path) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(`${apiBase()}${path}`, { headers });
+  if (response.status === 401) {
+    clearSession();
+    window.location.href = "/";
+    throw new Error("Session expired.");
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "Could not download the file.");
+  }
+  const blob = await response.blob();
+  const mimeType = response.headers.get("content-type") || blob.type || "application/octet-stream";
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(disposition);
+  const filename = match ? decodeURIComponent(match[1].replace(/"/g, "")) : "document";
+  return { blob, filename, mimeType };
+}
 function getDecimalPrecision() {
   const n = Number(getUser()?.decimalPrecision);
   if (!Number.isFinite(n)) {
@@ -124,6 +147,53 @@ function labelize(value) {
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+var HOUSE_ICON = `<svg class="property-thumb-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 21V10.5L12 4l8 6.5V21"/><path fill="none" stroke="currentColor" stroke-width="1.8" d="M9 21v-6h6v6"/></svg>`;
+var thumbUrls = /* @__PURE__ */ new Map();
+function propertyThumbHtml(propertyId, hasImage = false) {
+  const id = String(propertyId || "");
+  const cached = id ? thumbUrls.get(id) : "";
+  return `<span class="property-thumb-wrap${cached ? " has-photo" : ""}">
+    <span class="property-thumb placeholder">${HOUSE_ICON}</span>
+    ${id && hasImage ? `<img class="property-thumb" alt="" data-property-image="${escapeHtml(id)}"${cached ? ` src="${escapeHtml(cached)}"` : ""}>` : ""}
+  </span>`;
+}
+async function hydratePropertyThumbs(root2) {
+  const imgs = [...root2.querySelectorAll("img[data-property-image]")];
+  const unique = /* @__PURE__ */ new Map();
+  for (const img of imgs) {
+    const id = img.dataset.propertyImage || "";
+    if (!id) {
+      continue;
+    }
+    const group = unique.get(id) || [];
+    group.push(img);
+    unique.set(id, group);
+  }
+  await Promise.all(
+    [...unique.entries()].map(async ([id, group]) => {
+      let url = group.find((img) => img.getAttribute("src"))?.getAttribute("src") || thumbUrls.get(id) || "";
+      if (!url) {
+        try {
+          const file = await apiFile(`/properties/${id}/image`);
+          url = URL.createObjectURL(file.blob);
+          thumbUrls.set(id, url);
+        } catch {
+          return;
+        }
+      }
+      for (const img of group) {
+        img.src = url;
+        const wrap = img.closest(".property-thumb-wrap");
+        const reveal = () => wrap?.classList.add("has-photo");
+        if (img.complete && img.naturalWidth) {
+          reveal();
+        } else {
+          img.addEventListener("load", reveal, { once: true });
+        }
+      }
+    })
+  );
+}
 function initials(value) {
   const parts = value.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) {
@@ -158,13 +228,15 @@ function statusPill(status, label) {
   const text = label || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return `<span class="pill ${pillKind(status)}">${escapeHtml(text)}</span>`;
 }
-function nameCell(title, subtitle, href) {
+function nameCell(title, subtitle, href, property) {
   const heading = href ? `<a class="name-title" href="${escapeHtml(href)}">${escapeHtml(title)}</a>` : `<div class="name-title">${escapeHtml(title)}</div>`;
+  const propertyId = String(property?.propertyId || "");
+  const avatar = propertyId ? propertyThumbHtml(propertyId, Boolean(property?.hasImage)) : `<span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>`;
   return `<div class="name-cell">
-    <span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>
+    ${avatar}
     <div>
       ${heading}
-      <div class="name-sub">${escapeHtml(subtitle)}</div>
+      ${subtitle ? `<div class="name-sub">${escapeHtml(subtitle)}</div>` : ""}
     </div>
   </div>`;
 }
@@ -214,17 +286,31 @@ function sortFieldHtml(options, id = "sort-by") {
     </select>
   </label>`;
 }
-function renderDataList(rows, view2, empty, openMenuId2) {
+function renderDataList(rows, view2, empty, openMenuId2, options) {
   if (!rows.length) {
     return `<p class="empty">${empty}</p>`;
   }
+  const selectedIds2 = options?.selectedIds;
+  const selectable = Boolean(selectedIds2);
+  const selectCell = (row) => {
+    if (!selectable || !selectedIds2) {
+      return "";
+    }
+    const checked = selectedIds2.has(row.id);
+    return `<label class="row-check">
+      <span class="sr-only">Select ${escapeHtml(row.title)}</span>
+      <input type="checkbox" data-select="${escapeHtml(row.id)}"${checked ? " checked" : ""} />
+    </label>`;
+  };
+  const allSelected = selectable && rows.length > 0 && rows.every((row) => selectedIds2.has(row.id));
+  const someSelected = selectable && rows.some((row) => selectedIds2.has(row.id));
   const hasActions = rows.some((row) => Boolean(row.actions));
   const extraHeaders = rows[0]?.extras?.map((extra) => extra.header) ?? [];
   const hasExtras = extraHeaders.length > 0;
   const cells = (row) => {
     const actions = kebabMenu(row.id, openMenuId2 === row.id, row.actions || "");
     return {
-      name: nameCell(row.title, row.subtitle, row.href),
+      name: nameCell(row.title, row.subtitle, row.href, row),
       status: statusPill(row.status, row.statusLabel),
       summary: summaryCell(row.summaryTitle, row.summarySub),
       extras: extraHeaders.map((header, index) => {
@@ -247,6 +333,7 @@ function renderDataList(rows, view2, empty, openMenuId2) {
       }).join("")}</div>` : cell.summary;
       return `<article class="property-card">
           <div class="property-card-head">
+            ${selectCell(row)}
             ${cell.name}
             ${hasActions ? cell.actions : ""}
           </div>
@@ -258,9 +345,13 @@ function renderDataList(rows, view2, empty, openMenuId2) {
     }).join("")}</div>`;
   }
   return `<div class="data-table-wrap">
-    <table class="data-table${hasExtras ? " has-extras" : ""}">
+    <table class="data-table${hasExtras ? " has-extras" : ""}${selectable ? " has-select" : ""}">
       <thead>
         <tr>
+          ${selectable ? `<th class="col-check"><label class="row-check">
+                  <span class="sr-only">Select all</span>
+                  <input type="checkbox" data-select-all${allSelected ? " checked" : ""}${someSelected && !allSelected ? ' data-indeterminate="true"' : ""} />
+                </label></th>` : ""}
           <th>Name</th>
           <th>Status</th>
           ${hasExtras ? extraHeaders.map((header) => `<th>${escapeHtml(header)}</th>`).join("") : "<th>Summary</th>"}
@@ -274,6 +365,7 @@ function renderDataList(rows, view2, empty, openMenuId2) {
       (html, index) => `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
     ).join("") : `<td>${cell.summary}</td>`;
     return `<tr>
+              ${selectable ? `<td class="col-check">${selectCell(row)}</td>` : ""}
               <td>${cell.name}</td>
               <td>${cell.status}</td>
               ${extraTds}
@@ -344,6 +436,7 @@ function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
   if (openMenuId2) {
     requestAnimationFrame(() => positionOpenRowMenu(root2));
   }
+  void hydratePropertyThumbs(root2);
 }
 function matchesQuery(row, query, keys) {
   const needle = query.trim().toLowerCase();
@@ -650,6 +743,7 @@ function setStatus(el, message, type = "info") {
 
 // src/pages/payments.ts
 var VIEW_KEY = "pf-payments-view";
+var PAGE_SIZE = 10;
 var root = mountShell(
   "/payments.html",
   "Payments",
@@ -732,6 +826,8 @@ var search = "";
 var sortBy = "due";
 var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
 var openMenuId = null;
+var page = 1;
+var selectedIds = /* @__PURE__ */ new Set();
 var paymentModal = document.getElementById("payment-modal");
 var paymentForm = document.getElementById("payment-form");
 function openBackdrop(el) {
@@ -814,6 +910,135 @@ function sortRows(rows, keys) {
   });
   return filtered;
 }
+function totalPagesFor(total) {
+  return Math.max(1, Math.ceil(total / PAGE_SIZE));
+}
+function clampPage(total) {
+  page = Math.min(Math.max(1, page), totalPagesFor(total));
+}
+function resetPage() {
+  page = 1;
+  openMenuId = null;
+  selectedIds.clear();
+}
+function bulkBarHtml() {
+  if (!selectedIds.size) {
+    return "";
+  }
+  return `<div class="list-bulk">
+    <span>${selectedIds.size} selected</span>
+    <button class="btn" type="button" data-bulk="paid">Mark paid</button>
+    <button class="btn secondary" type="button" data-bulk="unpaid">Mark unpaid</button>
+    <button class="btn ghost" type="button" data-bulk="clear">Clear</button>
+  </div>`;
+}
+function bindSelection(root2, pageRows) {
+  const pageIds = pageRows.map((row) => String(row.id || row._id));
+  const selectAll = root2.querySelector("[data-select-all]");
+  if (selectAll) {
+    const selectedOnPage = pageIds.filter((id) => selectedIds.has(id)).length;
+    selectAll.indeterminate = selectedOnPage > 0 && selectedOnPage < pageIds.length;
+    selectAll.addEventListener("click", (event) => event.stopPropagation());
+    selectAll.addEventListener("change", () => {
+      if (selectAll.checked) {
+        pageIds.forEach((id) => selectedIds.add(id));
+      } else {
+        pageIds.forEach((id) => selectedIds.delete(id));
+      }
+      render();
+    });
+  }
+  root2.querySelectorAll("[data-select]").forEach((input) => {
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("change", () => {
+      const id = String(input.dataset.select || "");
+      if (!id) {
+        return;
+      }
+      if (input.checked) {
+        selectedIds.add(id);
+      } else {
+        selectedIds.delete(id);
+      }
+      render();
+    });
+  });
+  root2.querySelectorAll("[data-bulk]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = String(button.dataset.bulk || "");
+      if (action === "clear") {
+        selectedIds.clear();
+        render();
+        return;
+      }
+      if (action === "paid" || action === "unpaid") {
+        void applyBulkStatus(action);
+      }
+    });
+  });
+}
+async function applyBulkStatus(status) {
+  const ids = [...selectedIds];
+  if (!ids.length) {
+    return;
+  }
+  try {
+    const data = await api("/mortgages/payments/bulk", {
+      method: "POST",
+      body: JSON.stringify({ ids, status })
+    });
+    selectedIds.clear();
+    setStatus(document.getElementById("status"), data.message || "Payments updated.", "success");
+    await loadViews();
+  } catch (error) {
+    setStatus(document.getElementById("status"), error.message, "error");
+  }
+}
+function pagerHtml(total) {
+  if (!total) {
+    return "";
+  }
+  const pages = totalPagesFor(total);
+  const start = (page - 1) * PAGE_SIZE + 1;
+  const end = Math.min(page * PAGE_SIZE, total);
+  if (pages === 1) {
+    return `<nav class="list-pager" aria-label="Pagination">
+      <span class="list-pager-meta">${total} payment${total === 1 ? "" : "s"}</span>
+    </nav>`;
+  }
+  const windowSize = 5;
+  let from = Math.max(1, page - Math.floor(windowSize / 2));
+  const to = Math.min(pages, from + windowSize - 1);
+  from = Math.max(1, to - windowSize + 1);
+  const numbers = Array.from({ length: to - from + 1 }, (_, i) => from + i).map(
+    (n) => `<button class="list-pager-page${n === page ? " active" : ""}" type="button" data-page="${n}" aria-current="${n === page ? "page" : "false"}">${n}</button>`
+  ).join("");
+  return `<nav class="list-pager" aria-label="Pagination">
+    <span class="list-pager-meta">${start}\u2013${end} of ${total}</span>
+    <div class="list-pager-btns">
+      <button class="btn ghost" type="button" data-page="prev"${page <= 1 ? " disabled" : ""}>Previous</button>
+      ${numbers}
+      <button class="btn ghost" type="button" data-page="next"${page >= pages ? " disabled" : ""}>Next</button>
+    </div>
+  </nav>`;
+}
+function bindPager(root2, total) {
+  root2.querySelectorAll("[data-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const token = String(button.dataset.page || "");
+      if (token === "prev") {
+        page -= 1;
+      } else if (token === "next") {
+        page += 1;
+      } else {
+        page = Number(token) || page;
+      }
+      clampPage(total);
+      openMenuId = null;
+      render();
+    });
+  });
+}
 function render() {
   if (!views) {
     return;
@@ -824,26 +1049,49 @@ function render() {
   const content = document.getElementById("content");
   const source = views[activeView];
   const rows = sortRows(source, ["property_name", "lender", "status", "notes", "due_date", "paid_date"]);
-  content.innerHTML = renderDataList(
-    rows.map((r) => {
+  clampPage(rows.length);
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  content.innerHTML = `${bulkBarHtml()}${renderDataList(
+    pageRows.map((r) => {
       const id = String(r.id || r._id);
       const status = String(r.status || "upcoming");
       return {
         id,
         title: String(r.property_name || "Property"),
-        subtitle: `${r.lender || "Lender"} \xB7 Due ${formatDateDmY(String(r.due_date || ""))}`,
+        subtitle: "",
         href: r.property_id ? `/property.html?id=${r.property_id}` : void 0,
+        propertyId: r.property_id ? String(r.property_id) : void 0,
+        hasImage: Boolean(r.hasImage),
         status,
         statusLabel: labelize(status),
-        summaryTitle: `Expected ${money(Number(r.expected_amount), user.preferredCurrency)}`,
-        summarySub: `Paid ${r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "-"}${r.paid_date ? ` \xB7 ${formatDateDmY(String(r.paid_date))}` : ""}`,
+        summaryTitle: "",
+        summarySub: "",
+        extras: [
+          {
+            header: "Lender",
+            title: String(r.lender || "\u2014")
+          },
+          {
+            header: "Due date",
+            title: r.due_date ? formatDateDmY(String(r.due_date)) : "\u2014"
+          },
+          {
+            header: "Expected",
+            title: money(Number(r.expected_amount), user.preferredCurrency)
+          },
+          {
+            header: "Paid",
+            title: r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "\u2014"
+          }
+        ],
         actions: `<button type="button" data-edit="${id}" data-mode="edit">Edit</button>${status === "paid" ? "" : `<button type="button" data-edit="${id}" data-mode="pay">Mark paid</button>`}`
       };
     }),
     view,
     "No payments in this view.",
-    openMenuId
-  );
+    openMenuId,
+    { selectedIds }
+  )}${pagerHtml(rows.length)}`;
   bindRowMenus(
     content,
     openMenuId,
@@ -852,9 +1100,11 @@ function render() {
     },
     render
   );
+  bindPager(content, rows.length);
+  bindSelection(content, pageRows);
   content.querySelectorAll("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => {
-      const row = rows.find((r) => String(r.id || r._id) === String(button.dataset.edit));
+      const row = pageRows.find((r) => String(r.id || r._id) === String(button.dataset.edit));
       if (row) {
         openMenuId = null;
         openPaymentEditor(row, button.dataset.mode === "pay");
@@ -999,6 +1249,7 @@ paymentForm.addEventListener("submit", async (event) => {
       setStatus(document.getElementById("status"), "Payment updated.", "success");
     }
     closeBackdrop(paymentModal);
+    resetPage();
     if (status === "paid") {
       activeView = "past";
     } else if (dueDate) {
@@ -1051,14 +1302,16 @@ document.getElementById("view-tabs")?.addEventListener("click", (event) => {
   const target = event.target;
   if (target.dataset.view === "upcoming" || target.dataset.view === "current" || target.dataset.view === "past") {
     activeView = target.dataset.view;
-    openMenuId = null;
+    resetPage();
     render();
   }
 });
 document.getElementById("filterProperty")?.addEventListener("change", () => {
+  resetPage();
   void loadViews();
 });
 document.getElementById("filterYear")?.addEventListener("change", () => {
+  resetPage();
   void loadViews();
 });
 bindListChrome({
@@ -1070,10 +1323,12 @@ bindListChrome({
   },
   onSearch: (value) => {
     search = value;
+    resetPage();
     render();
   },
   onSort: (value) => {
     sortBy = value;
+    resetPage();
     render();
   }
 });

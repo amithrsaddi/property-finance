@@ -33,7 +33,10 @@ const propertySchema = new Schema(
     ownershipPercentage: { type: Number, default: 100 },
     expectedMonthlyRent: { type: Number, default: 0 },
     notes: { type: String, default: "" },
-    status: { type: String, default: "active", index: true }
+    status: { type: String, default: "active", index: true },
+    hasImage: { type: Boolean, default: false },
+    imageMimeType: { type: String, default: "" },
+    imageData: { type: Buffer, select: false }
   },
   { timestamps: true }
 );

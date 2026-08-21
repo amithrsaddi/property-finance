@@ -1,12 +1,44 @@
 import { Router } from "express";
 import { requireAuth } from "../auth.js";
 import { parseDateRange } from "../dates.js";
+import { decodeFileData, fileBuffer, guessMime, safeFilename, validateImage } from "../files.js";
 import { Expense, Mortgage, MortgagePayment, Property, RentPayment } from "../models.js";
 import { mapProperty } from "../serialize.js";
 import type { AuthedRequest } from "../types.js";
 
 const router = Router();
 router.use(requireAuth);
+
+function applyPropertyImage(
+  property: InstanceType<typeof Property>,
+  body: Record<string, unknown> | undefined
+): string | null {
+  if (!body) {
+    return null;
+  }
+  if (body.removeImage) {
+    property.set("imageData", undefined);
+    property.imageMimeType = "";
+    property.hasImage = false;
+    property.markModified("imageData");
+    return null;
+  }
+  const fileData = decodeFileData(body.imageData);
+  if (!fileData) {
+    return null;
+  }
+  const filename = String(body.imageFilename || body.originalFilename || "photo.jpg");
+  const mimeType = guessMime(filename, String(body.imageMimeType || body.mimeType || ""));
+  const error = validateImage(filename, mimeType, fileData.length);
+  if (error) {
+    return error;
+  }
+  property.imageData = fileData;
+  property.imageMimeType = mimeType;
+  property.hasImage = true;
+  property.markModified("imageData");
+  return null;
+}
 
 router.get("/", async (req: AuthedRequest, res) => {
   const status = String(req.query.status || "active");
@@ -19,13 +51,30 @@ router.get("/", async (req: AuthedRequest, res) => {
   return res.json({ properties: rows.map((row) => mapProperty(row)) });
 });
 
+router.get("/:id/image", async (req: AuthedRequest, res) => {
+  const property = await Property.findOne({ _id: req.params.id, userId: req.user!.id }).select(
+    "+imageData imageMimeType name hasImage"
+  );
+  if (!property?.imageData) {
+    return res.status(404).json({ message: "Property photo not found." });
+  }
+
+  const filename = safeFilename(`${property.name || "property"}.jpg`);
+  const payload = fileBuffer(property.imageData);
+  const mime = guessMime(filename, property.imageMimeType);
+  res.setHeader("Content-Type", mime.startsWith("image/") ? mime : "image/jpeg");
+  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+  res.setHeader("Cache-Control", "private, no-store");
+  return res.send(payload);
+});
+
 router.post("/", async (req: AuthedRequest, res) => {
   const name = String(req.body?.name || "").trim();
   if (!name) {
     return res.status(400).json({ message: "Property name is required." });
   }
 
-  const created = await Property.create({
+  const created = new Property({
     userId: req.user!.id,
     name,
     address: String(req.body?.address || "").trim(),
@@ -38,6 +87,11 @@ router.post("/", async (req: AuthedRequest, res) => {
     notes: String(req.body?.notes || ""),
     status: String(req.body?.status || "active")
   });
+  const imageError = applyPropertyImage(created, req.body);
+  if (imageError) {
+    return res.status(400).json({ message: imageError });
+  }
+  await created.save();
 
   return res.status(201).json({ property: mapProperty(created.toObject()), message: "Property created." });
 });
@@ -149,7 +203,7 @@ router.get("/:id", async (req: AuthedRequest, res) => {
 });
 
 router.put("/:id", async (req: AuthedRequest, res) => {
-  const property = await Property.findOne({ _id: req.params.id, userId: req.user!.id });
+  const property = await Property.findOne({ _id: req.params.id, userId: req.user!.id }).select("+imageData");
   if (!property) {
     return res.status(404).json({ message: "Property not found." });
   }
@@ -176,6 +230,10 @@ router.put("/:id", async (req: AuthedRequest, res) => {
   );
   property.notes = String(req.body?.notes ?? property.notes ?? "");
   property.status = String(req.body?.status ?? property.status ?? "active");
+  const imageError = applyPropertyImage(property, req.body);
+  if (imageError) {
+    return res.status(400).json({ message: imageError });
+  }
   await property.save();
 
   return res.json({ property: mapProperty(property.toObject()), message: "Property updated." });

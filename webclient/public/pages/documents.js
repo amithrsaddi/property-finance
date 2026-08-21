@@ -123,6 +123,44 @@ function formatDateDmY(value) {
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+var thumbUrls = /* @__PURE__ */ new Map();
+async function hydratePropertyThumbs(root2) {
+  const imgs = [...root2.querySelectorAll("img[data-property-image]")];
+  const unique = /* @__PURE__ */ new Map();
+  for (const img of imgs) {
+    const id = img.dataset.propertyImage || "";
+    if (!id) {
+      continue;
+    }
+    const group = unique.get(id) || [];
+    group.push(img);
+    unique.set(id, group);
+  }
+  await Promise.all(
+    [...unique.entries()].map(async ([id, group]) => {
+      let url = group.find((img) => img.getAttribute("src"))?.getAttribute("src") || thumbUrls.get(id) || "";
+      if (!url) {
+        try {
+          const file = await apiFile(`/properties/${id}/image`);
+          url = URL.createObjectURL(file.blob);
+          thumbUrls.set(id, url);
+        } catch {
+          return;
+        }
+      }
+      for (const img of group) {
+        img.src = url;
+        const wrap = img.closest(".property-thumb-wrap");
+        const reveal = () => wrap?.classList.add("has-photo");
+        if (img.complete && img.naturalWidth) {
+          reveal();
+        } else {
+          img.addEventListener("load", reveal, { once: true });
+        }
+      }
+    })
+  );
+}
 function kebabMenu(id, open, itemsHtml) {
   if (!itemsHtml.trim()) {
     return "";
@@ -187,6 +225,7 @@ function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
   if (openMenuId2) {
     requestAnimationFrame(() => positionOpenRowMenu(root2));
   }
+  void hydratePropertyThumbs(root2);
 }
 function matchesQuery(row, query, keys) {
   const needle = query.trim().toLowerCase();

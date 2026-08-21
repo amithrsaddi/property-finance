@@ -66,6 +66,29 @@ async function api(path, options = {}) {
   }
   return data;
 }
+async function apiFile(path) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(`${apiBase()}${path}`, { headers });
+  if (response.status === 401) {
+    clearSession();
+    window.location.href = "/";
+    throw new Error("Session expired.");
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "Could not download the file.");
+  }
+  const blob = await response.blob();
+  const mimeType = response.headers.get("content-type") || blob.type || "application/octet-stream";
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(disposition);
+  const filename = match ? decodeURIComponent(match[1].replace(/"/g, "")) : "document";
+  return { blob, filename, mimeType };
+}
 function getDecimalPrecision() {
   const n = Number(getUser()?.decimalPrecision);
   if (!Number.isFinite(n)) {
@@ -146,6 +169,53 @@ function labelize(value) {
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+var HOUSE_ICON = `<svg class="property-thumb-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 21V10.5L12 4l8 6.5V21"/><path fill="none" stroke="currentColor" stroke-width="1.8" d="M9 21v-6h6v6"/></svg>`;
+var thumbUrls = /* @__PURE__ */ new Map();
+function propertyThumbHtml(propertyId, hasImage = false) {
+  const id = String(propertyId || "");
+  const cached = id ? thumbUrls.get(id) : "";
+  return `<span class="property-thumb-wrap${cached ? " has-photo" : ""}">
+    <span class="property-thumb placeholder">${HOUSE_ICON}</span>
+    ${id && hasImage ? `<img class="property-thumb" alt="" data-property-image="${escapeHtml(id)}"${cached ? ` src="${escapeHtml(cached)}"` : ""}>` : ""}
+  </span>`;
+}
+async function hydratePropertyThumbs(root2) {
+  const imgs = [...root2.querySelectorAll("img[data-property-image]")];
+  const unique = /* @__PURE__ */ new Map();
+  for (const img of imgs) {
+    const id = img.dataset.propertyImage || "";
+    if (!id) {
+      continue;
+    }
+    const group = unique.get(id) || [];
+    group.push(img);
+    unique.set(id, group);
+  }
+  await Promise.all(
+    [...unique.entries()].map(async ([id, group]) => {
+      let url = group.find((img) => img.getAttribute("src"))?.getAttribute("src") || thumbUrls.get(id) || "";
+      if (!url) {
+        try {
+          const file = await apiFile(`/properties/${id}/image`);
+          url = URL.createObjectURL(file.blob);
+          thumbUrls.set(id, url);
+        } catch {
+          return;
+        }
+      }
+      for (const img of group) {
+        img.src = url;
+        const wrap = img.closest(".property-thumb-wrap");
+        const reveal = () => wrap?.classList.add("has-photo");
+        if (img.complete && img.naturalWidth) {
+          reveal();
+        } else {
+          img.addEventListener("load", reveal, { once: true });
+        }
+      }
+    })
+  );
+}
 function initials(value) {
   const parts = value.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) {
@@ -180,13 +250,15 @@ function statusPill(status, label) {
   const text = label || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return `<span class="pill ${pillKind(status)}">${escapeHtml(text)}</span>`;
 }
-function nameCell(title, subtitle, href) {
+function nameCell(title, subtitle, href, property) {
   const heading = href ? `<a class="name-title" href="${escapeHtml(href)}">${escapeHtml(title)}</a>` : `<div class="name-title">${escapeHtml(title)}</div>`;
+  const propertyId = String(property?.propertyId || "");
+  const avatar = propertyId ? propertyThumbHtml(propertyId, Boolean(property?.hasImage)) : `<span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>`;
   return `<div class="name-cell">
-    <span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>
+    ${avatar}
     <div>
       ${heading}
-      <div class="name-sub">${escapeHtml(subtitle)}</div>
+      ${subtitle ? `<div class="name-sub">${escapeHtml(subtitle)}</div>` : ""}
     </div>
   </div>`;
 }
@@ -236,17 +308,31 @@ function sortFieldHtml(options, id = "sort-by") {
     </select>
   </label>`;
 }
-function renderDataList(rows, view2, empty, openMenuId2) {
+function renderDataList(rows, view2, empty, openMenuId2, options) {
   if (!rows.length) {
     return `<p class="empty">${empty}</p>`;
   }
+  const selectedIds = options?.selectedIds;
+  const selectable = Boolean(selectedIds);
+  const selectCell = (row) => {
+    if (!selectable || !selectedIds) {
+      return "";
+    }
+    const checked = selectedIds.has(row.id);
+    return `<label class="row-check">
+      <span class="sr-only">Select ${escapeHtml(row.title)}</span>
+      <input type="checkbox" data-select="${escapeHtml(row.id)}"${checked ? " checked" : ""} />
+    </label>`;
+  };
+  const allSelected = selectable && rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
+  const someSelected = selectable && rows.some((row) => selectedIds.has(row.id));
   const hasActions = rows.some((row) => Boolean(row.actions));
   const extraHeaders = rows[0]?.extras?.map((extra) => extra.header) ?? [];
   const hasExtras = extraHeaders.length > 0;
   const cells = (row) => {
     const actions = kebabMenu(row.id, openMenuId2 === row.id, row.actions || "");
     return {
-      name: nameCell(row.title, row.subtitle, row.href),
+      name: nameCell(row.title, row.subtitle, row.href, row),
       status: statusPill(row.status, row.statusLabel),
       summary: summaryCell(row.summaryTitle, row.summarySub),
       extras: extraHeaders.map((header, index) => {
@@ -269,6 +355,7 @@ function renderDataList(rows, view2, empty, openMenuId2) {
       }).join("")}</div>` : cell.summary;
       return `<article class="property-card">
           <div class="property-card-head">
+            ${selectCell(row)}
             ${cell.name}
             ${hasActions ? cell.actions : ""}
           </div>
@@ -280,9 +367,13 @@ function renderDataList(rows, view2, empty, openMenuId2) {
     }).join("")}</div>`;
   }
   return `<div class="data-table-wrap">
-    <table class="data-table${hasExtras ? " has-extras" : ""}">
+    <table class="data-table${hasExtras ? " has-extras" : ""}${selectable ? " has-select" : ""}">
       <thead>
         <tr>
+          ${selectable ? `<th class="col-check"><label class="row-check">
+                  <span class="sr-only">Select all</span>
+                  <input type="checkbox" data-select-all${allSelected ? " checked" : ""}${someSelected && !allSelected ? ' data-indeterminate="true"' : ""} />
+                </label></th>` : ""}
           <th>Name</th>
           <th>Status</th>
           ${hasExtras ? extraHeaders.map((header) => `<th>${escapeHtml(header)}</th>`).join("") : "<th>Summary</th>"}
@@ -296,6 +387,7 @@ function renderDataList(rows, view2, empty, openMenuId2) {
       (html, index) => `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
     ).join("") : `<td>${cell.summary}</td>`;
     return `<tr>
+              ${selectable ? `<td class="col-check">${selectCell(row)}</td>` : ""}
               <td>${cell.name}</td>
               <td>${cell.status}</td>
               ${extraTds}
@@ -366,6 +458,7 @@ function bindRowMenus(root2, openMenuId2, setOpenMenuId, rerender) {
   if (openMenuId2) {
     requestAnimationFrame(() => positionOpenRowMenu(root2));
   }
+  void hydratePropertyThumbs(root2);
 }
 function matchesQuery(row, query, keys) {
   const needle = query.trim().toLowerCase();
@@ -940,6 +1033,8 @@ function renderList() {
         title: String(row.property_name || "Property"),
         subtitle: `Period ${formatMonthYear(String(row.rental_period || ""))} \xB7 Due ${formatDateDmY(String(row.expected_payment_date || ""))}`,
         href: row.property_id ? `/property.html?id=${row.property_id}` : void 0,
+        propertyId: row.property_id ? String(row.property_id) : void 0,
+        hasImage: Boolean(row.hasImage),
         status,
         statusLabel: displayStatus(status),
         summaryTitle: `Expected ${money(Number(row.expected_amount), user.preferredCurrency)}`,

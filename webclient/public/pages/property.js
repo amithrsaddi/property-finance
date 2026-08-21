@@ -66,6 +66,29 @@ async function api(path, options = {}) {
   }
   return data;
 }
+async function apiFile(path) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(`${apiBase()}${path}`, { headers });
+  if (response.status === 401) {
+    clearSession();
+    window.location.href = "/";
+    throw new Error("Session expired.");
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "Could not download the file.");
+  }
+  const blob = await response.blob();
+  const mimeType = response.headers.get("content-type") || blob.type || "application/octet-stream";
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(disposition);
+  const filename = match ? decodeURIComponent(match[1].replace(/"/g, "")) : "document";
+  return { blob, filename, mimeType };
+}
 function getDecimalPrecision() {
   const n = Number(getUser()?.decimalPrecision);
   if (!Number.isFinite(n)) {
@@ -111,6 +134,14 @@ function qs(params2) {
 function currentMonthValue() {
   const now = /* @__PURE__ */ new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+function formatDateDmY(value) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!match) {
+    return raw || "-";
+  }
+  return `${match[3]}-${match[2]}-${match[1]}`;
 }
 function statusClass(status) {
   const map = {
@@ -452,6 +483,7 @@ root.innerHTML = `
   <section id="content"></section>
 `;
 var cache = null;
+var detailImageUrl = null;
 async function load() {
   const month = document.getElementById("month").value;
   try {
@@ -484,19 +516,34 @@ function renderTab(tab) {
         <div class="metric"><div class="label">Other expenses</div><div class="value">${money(Number(s.expenses), currency)}</div></div>
         <div class="metric ${Number(s.netCashFlow) >= 0 ? "positive" : "negative"}"><div class="label">Net cash flow</div><div class="value">${money(Number(s.netCashFlow), currency)}</div></div>
       </section>
-      <section class="two-col">
-        <div class="panel"><h2>Upcoming payments</h2>${table(cache.upcoming.rent.concat(cache.upcoming.mortgage), true)}</div>
-        <div class="panel"><h2>Recent expenses</h2>${table(cache.upcoming.expenses, false)}</div>
+      <section class="two-col overview-tiles">
+        <div class="panel">
+          <h2>Upcoming payments</h2>
+          ${table(cache.upcoming.rent.concat(cache.upcoming.mortgage), true)}
+        </div>
+        <div class="panel">
+          <h2>Recent expenses</h2>
+          ${table(cache.upcoming.expenses, false)}
+        </div>
       </section>
-      <section class="panel">
-        <h2>Property details</h2>
-        <p><strong>Type:</strong> ${labelize(String(cache.property.propertyType))}</p>
-        <p><strong>Ownership:</strong> ${cache.property.ownershipPercentage}%</p>
-        <p><strong>Purchase:</strong> ${money(Number(cache.property.purchasePrice || 0), currency)} on ${cache.property.purchaseDate || "-"}</p>
-        <p><strong>Current value:</strong> ${money(Number(cache.property.currentValue || 0), currency)}</p>
-        <p class="muted">${cache.property.notes || ""}</p>
+      <section class="two-col overview-tiles">
+        <div class="panel">
+          <h2>Property details</h2>
+          <dl class="detail-list">
+            <div><dt>Type</dt><dd>${labelize(String(cache.property.propertyType))}</dd></div>
+            <div><dt>Ownership</dt><dd>${cache.property.ownershipPercentage}%</dd></div>
+            <div><dt>Purchase</dt><dd>${money(Number(cache.property.purchasePrice || 0), currency)} on ${cache.property.purchaseDate ? formatDateDmY(String(cache.property.purchaseDate)) : "-"}</dd></div>
+            <div><dt>Current value</dt><dd>${money(Number(cache.property.currentValue || 0), currency)}</dd></div>
+          </dl>
+          ${cache.property.notes ? `<p class="muted">${cache.property.notes}</p>` : ""}
+        </div>
+        <div class="panel property-image-panel">
+          <h2>Property image</h2>
+          ${cache.property.hasImage ? `<div class="property-image-frame"><img id="property-detail-image" alt="${String(cache.property.name || "Property").replace(/"/g, "&quot;")}"></div>` : `<p class="empty">No property image yet. Add one when you edit this property.</p>`}
+        </div>
       </section>
     `;
+    void loadDetailImage();
     return;
   }
   if (tab === "rent") {
@@ -521,11 +568,15 @@ function table(rows, upcoming) {
   if (!rows.length) {
     return `<p class="empty">No ${upcoming ? "upcoming items" : "recent activity"}.</p>`;
   }
-  return `<ul>${rows.slice(0, 6).map((row) => {
+  return `<ul class="overview-list">${rows.slice(0, 6).map((row) => {
     const label = row.property_name || row.lender || row.category || row.rental_period || "Item";
     const amount = row.expected_amount ?? row.amount ?? 0;
     const date = row.expected_payment_date || row.due_date || row.expense_date || "";
-    return `<li><strong>${label}</strong> \xB7 ${money(Number(amount), user.preferredCurrency)} \xB7 ${date}</li>`;
+    return `<li>
+        <span class="overview-list-label">${label}</span>
+        <span class="overview-list-amount">${money(Number(amount), user.preferredCurrency)}</span>
+        <span class="overview-list-date">${date ? formatDateDmY(String(date)) : ""}</span>
+      </li>`;
   }).join("")}</ul>`;
 }
 function rentTable(rows) {
@@ -556,6 +607,26 @@ function mortgageTable(rows) {
       </tr>`
   ).join("")}
   </tbody></table>`;
+}
+async function loadDetailImage() {
+  const img = document.getElementById("property-detail-image");
+  if (!img || !cache?.property.hasImage) {
+    return;
+  }
+  if (!detailImageUrl) {
+    try {
+      const file = await apiFile(`/properties/${propertyId}/image`);
+      detailImageUrl = URL.createObjectURL(file.blob);
+    } catch {
+      const panel = img.closest(".property-image-panel");
+      if (panel) {
+        panel.innerHTML = `<h2>Property image</h2><p class="empty">No property image yet. Add one when you edit this property.</p>`;
+      }
+      return;
+    }
+  }
+  img.src = detailImageUrl;
+  img.closest(".property-image-panel")?.classList.add("has-photo");
 }
 function expenseTable(rows) {
   if (!rows.length) {

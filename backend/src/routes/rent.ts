@@ -3,7 +3,7 @@ import { requireAuth } from "../auth.js";
 import { clampDay, parseDateRange, sum } from "../dates.js";
 import { refreshRentStatuses } from "../domain.js";
 import { Property, RentPayment } from "../models.js";
-import { mapRentPayment } from "../serialize.js";
+import { lookupProperties, mapRentPayment } from "../serialize.js";
 import type { AuthedRequest } from "../types.js";
 
 const router = Router();
@@ -76,9 +76,9 @@ router.get("/", async (req: AuthedRequest, res) => {
   const rows = await RentPayment.find(filter).sort({ expectedPaymentDate: -1 }).lean();
   const propertyIds = [...new Set(rows.map((r) => String(r.propertyId)))];
   const properties = await Property.find({ _id: { $in: propertyIds } }).lean();
-  const nameById = new Map(properties.map((p) => [String(p._id), p.name]));
+  const propertyById = lookupProperties(properties);
 
-  const rentPayments = rows.map((r) => mapRentPayment(r, nameById.get(String(r.propertyId))));
+  const rentPayments = rows.map((r) => mapRentPayment(r, propertyById.get(String(r.propertyId))));
   return res.json({
     rentPayments,
     totals: {
@@ -175,7 +175,7 @@ router.post("/recurring", async (req: AuthedRequest, res) => {
   return res.status(201).json({
     created: created.length,
     skipped: periods.length - created.length,
-    rentPayments: created.map((row) => mapRentPayment(row.toObject?.() ?? row, property.name)),
+    rentPayments: created.map((row) => mapRentPayment(row.toObject?.() ?? row, property)),
     message:
       created.length === 0
         ? "No new rent records created; all periods already exist."
@@ -219,7 +219,7 @@ router.post("/", async (req: AuthedRequest, res) => {
   });
 
   return res.status(201).json({
-    rentPayment: mapRentPayment(created.toObject(), property.name),
+    rentPayment: mapRentPayment(created.toObject(), property),
     message: "Rent payment recorded."
   });
 });
@@ -263,7 +263,7 @@ router.put("/:id", async (req: AuthedRequest, res) => {
 
   const property = await Property.findById(existing.propertyId).lean();
   return res.json({
-    rentPayment: mapRentPayment(existing.toObject(), property?.name),
+    rentPayment: mapRentPayment(existing.toObject(), property),
     message: "Rent payment updated."
   });
 });

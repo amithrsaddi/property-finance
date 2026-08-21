@@ -8,8 +8,27 @@ import type { AuthedRequest } from "../types.js";
 const router = Router();
 router.use(requireAuth);
 
+type PropertyScope = "all" | "rental" | "residential";
+
+function parseScope(value: unknown): PropertyScope {
+  const scope = String(value || "all").toLowerCase();
+  return scope === "rental" || scope === "residential" ? scope : "all";
+}
+
+function matchesScope(propertyType: unknown, scope: PropertyScope): boolean {
+  if (scope === "all") {
+    return true;
+  }
+  const type = String(propertyType || "residential");
+  if (scope === "rental") {
+    return type === "buy_to_let" || type === "hmo";
+  }
+  return type === "residential";
+}
+
 router.get("/", async (req: AuthedRequest, res) => {
   const userId = req.user!.id;
+  const scope = parseScope(req.query.scope);
   const range = parseDateRange({
     from: req.query.from as string | undefined,
     to: req.query.to as string | undefined,
@@ -24,7 +43,9 @@ router.get("/", async (req: AuthedRequest, res) => {
   }
   await refreshMortgagePaymentStatuses(userId);
 
-  const properties = await Property.find({ userId }).sort({ name: 1 }).lean();
+  const properties = (await Property.find({ userId }).sort({ name: 1 }).lean()).filter((p) =>
+    matchesScope(p.propertyType, scope)
+  );
   const rents = await RentPayment.find({
     userId,
     expectedPaymentDate: { $gte: range.from, $lte: range.to }
@@ -84,13 +105,15 @@ router.get("/", async (req: AuthedRequest, res) => {
     { rentReceived: 0, rentExpected: 0, mortgageSpend: 0, propertyExpenses: 0 }
   );
 
-  const additional = expenses
-    .filter((e) => e.scope === "general")
-    .reduce((s, e) => s + (e.amount || 0), 0);
+  const additional =
+    scope === "all"
+      ? expenses.filter((e) => e.scope === "general").reduce((s, e) => s + (e.amount || 0), 0)
+      : 0;
 
   return res.json({
     from: range.from,
     to: range.to,
+    scope,
     totals: {
       ...totals,
       additionalExpenses: additional,

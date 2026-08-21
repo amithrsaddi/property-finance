@@ -254,6 +254,8 @@ function renderList(): void {
         title: String(e.category || "Expense"),
         subtitle: e.description ? `${place} · ${e.description}` : place,
         href: scope === "property" && e.property_id ? `/property.html?id=${e.property_id}` : undefined,
+        propertyId: e.property_id ? String(e.property_id) : undefined,
+        hasImage: Boolean(e.hasImage),
         status,
         statusLabel: labelize(status),
         summaryTitle: money(Number(e.amount), user.preferredCurrency),

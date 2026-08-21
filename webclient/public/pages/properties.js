@@ -66,6 +66,29 @@ async function api(path, options = {}) {
   }
   return data;
 }
+async function apiFile(path) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(`${apiBase()}${path}`, { headers });
+  if (response.status === 401) {
+    clearSession();
+    window.location.href = "/";
+    throw new Error("Session expired.");
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "Could not download the file.");
+  }
+  const blob = await response.blob();
+  const mimeType = response.headers.get("content-type") || blob.type || "application/octet-stream";
+  const disposition = response.headers.get("content-disposition") || "";
+  const match = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(disposition);
+  const filename = match ? decodeURIComponent(match[1].replace(/"/g, "")) : "document";
+  return { blob, filename, mimeType };
+}
 function getDecimalPrecision() {
   const n = Number(getUser()?.decimalPrecision);
   if (!Number.isFinite(n)) {
@@ -113,6 +136,66 @@ function labelize(value) {
 }
 
 // src/list-view.ts
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+var HOUSE_ICON = `<svg class="property-thumb-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 21V10.5L12 4l8 6.5V21"/><path fill="none" stroke="currentColor" stroke-width="1.8" d="M9 21v-6h6v6"/></svg>`;
+var thumbUrls = /* @__PURE__ */ new Map();
+function cachedPropertyThumb(id) {
+  return thumbUrls.get(id);
+}
+function forgetPropertyThumb(id) {
+  const url = thumbUrls.get(id);
+  if (url) {
+    URL.revokeObjectURL(url);
+    thumbUrls.delete(id);
+  }
+}
+function propertyThumbHtml(propertyId, hasImage = false) {
+  const id = String(propertyId || "");
+  const cached = id ? thumbUrls.get(id) : "";
+  return `<span class="property-thumb-wrap${cached ? " has-photo" : ""}">
+    <span class="property-thumb placeholder">${HOUSE_ICON}</span>
+    ${id && hasImage ? `<img class="property-thumb" alt="" data-property-image="${escapeHtml(id)}"${cached ? ` src="${escapeHtml(cached)}"` : ""}>` : ""}
+  </span>`;
+}
+async function hydratePropertyThumbs(root2) {
+  const imgs = [...root2.querySelectorAll("img[data-property-image]")];
+  const unique = /* @__PURE__ */ new Map();
+  for (const img of imgs) {
+    const id = img.dataset.propertyImage || "";
+    if (!id) {
+      continue;
+    }
+    const group = unique.get(id) || [];
+    group.push(img);
+    unique.set(id, group);
+  }
+  await Promise.all(
+    [...unique.entries()].map(async ([id, group]) => {
+      let url = group.find((img) => img.getAttribute("src"))?.getAttribute("src") || thumbUrls.get(id) || "";
+      if (!url) {
+        try {
+          const file = await apiFile(`/properties/${id}/image`);
+          url = URL.createObjectURL(file.blob);
+          thumbUrls.set(id, url);
+        } catch {
+          return;
+        }
+      }
+      for (const img of group) {
+        img.src = url;
+        const wrap = img.closest(".property-thumb-wrap");
+        const reveal = () => wrap?.classList.add("has-photo");
+        if (img.complete && img.naturalWidth) {
+          reveal();
+        } else {
+          img.addEventListener("load", reveal, { once: true });
+        }
+      }
+    })
+  );
+}
 function positionOpenRowMenu(root2 = document) {
   const menu = root2.querySelector(".row-menu.open");
   const button = menu?.querySelector(".kebab-btn");
@@ -434,6 +517,8 @@ function setStatus(el, message, type = "info") {
 
 // src/pages/properties.ts
 var VIEW_KEY = "pf-properties-view";
+var MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+var IMAGE_ACCEPT = ".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp";
 var user = getUser();
 var root = mountShell(
   "/properties.html",
@@ -448,6 +533,9 @@ var sortBy = "newest";
 var search = "";
 var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
 var openMenuId = null;
+var selectedImage = null;
+var removeImage = false;
+var previewObjectUrl = null;
 root.innerHTML = `
   <section class="panel table-card">
     <div class="table-toolbar">
@@ -504,6 +592,23 @@ root.innerHTML = `
             </select>
           </div>
           <div class="field" style="grid-column:1/-1"><label>Address</label><input name="address" /></div>
+          <div class="field" style="grid-column:1/-1">
+            <label>Property image</label>
+            <div class="property-image-editor">
+              <div class="property-thumb-wrap property-thumb-wrap-lg" id="property-image-preview">
+                <span class="property-thumb placeholder" id="property-image-placeholder">${HOUSE_ICON}</span>
+                <img class="property-thumb" id="property-image-preview-img" alt="" />
+              </div>
+              <div class="property-image-actions">
+                <label class="file-drop">
+                  <input id="property-image" type="file" accept="${IMAGE_ACCEPT}" />
+                  <span class="file-drop-title">Upload property image</span>
+                  <span class="file-drop-sub" id="property-image-sub">JPG, PNG, GIF, or WebP \xB7 up to 4 MB</span>
+                </label>
+                <button class="btn secondary" id="remove-property-image" type="button" hidden>Remove image</button>
+              </div>
+            </div>
+          </div>
           <div class="field"><label>Purchase price</label><input name="purchasePrice" type="number" step="0.01" /></div>
           <div class="field"><label>Purchase date</label><input name="purchaseDate" type="date" /></div>
           <div class="field"><label>Current value</label><input name="currentValue" type="number" step="0.01" /></div>
@@ -514,6 +619,7 @@ root.innerHTML = `
           </div>
           <div class="field" style="grid-column:1/-1"><label>Notes</label><textarea name="notes"></textarea></div>
         </div>
+        <div class="status" id="property-form-status" hidden></div>
         <div class="modal-actions">
           <button class="btn secondary" id="cancel-modal" type="button">Cancel</button>
           <button class="btn" type="submit">Save property</button>
@@ -524,30 +630,62 @@ root.innerHTML = `
 `;
 var form = document.getElementById("property-form");
 var modal = document.getElementById("property-modal");
-function escapeHtml(value) {
+var imageInput = document.getElementById("property-image");
+var previewImg = document.getElementById("property-image-preview-img");
+var removeImageBtn = document.getElementById("remove-property-image");
+function escapeHtml2(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-function initials(value) {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) {
-    return "?";
-  }
-  return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join("");
-}
-function avatarTone(value) {
-  let hash = 0;
-  for (const char of value) {
-    hash = hash * 31 + char.charCodeAt(0) >>> 0;
-  }
-  return hash % 5;
 }
 function createdTime(row) {
   const raw = row.createdAt || row.created_at;
   const time = raw ? new Date(String(raw)).getTime() : 0;
   return Number.isFinite(time) ? time : 0;
 }
+function setImageHint(text) {
+  document.getElementById("property-image-sub").textContent = text;
+}
+function clearPreviewUrl() {
+  if (previewObjectUrl) {
+    URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  }
+}
+function forgetThumb(id) {
+  forgetPropertyThumb(id);
+}
+function showPreview(url) {
+  const wrap = document.getElementById("property-image-preview");
+  if (url) {
+    previewImg.src = url;
+    wrap?.classList.add("has-photo");
+    removeImageBtn.hidden = false;
+    return;
+  }
+  previewImg.removeAttribute("src");
+  wrap?.classList.remove("has-photo");
+  removeImageBtn.hidden = true;
+}
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read the photo."));
+    reader.readAsDataURL(file);
+  });
+}
+async function hydrateThumbs(root2) {
+  await hydratePropertyThumbs(root2);
+}
+function formStatusEl() {
+  return document.getElementById("property-form-status");
+}
 function openModal(title) {
   document.getElementById("form-title").textContent = title;
+  setStatus(formStatusEl(), "", "info");
   modal.hidden = false;
   document.body.classList.add("modal-open");
   form.elements.namedItem("name").focus();
@@ -559,14 +697,24 @@ function closeModal() {
 }
 function resetForm() {
   editingId = null;
+  selectedImage = null;
+  removeImage = false;
   form.reset();
+  imageInput.value = "";
+  clearPreviewUrl();
+  showPreview(null);
+  setImageHint("JPG, PNG, GIF, or WebP \xB7 up to 4 MB");
   form.elements.namedItem("ownershipPercentage").value = "100";
   form.elements.namedItem("expectedMonthlyRent").value = "0";
   form.elements.namedItem("status").value = "active";
   document.getElementById("form-title").textContent = "Add property";
 }
-function fillForm(property) {
+async function fillForm(property) {
   editingId = String(property.id);
+  selectedImage = null;
+  removeImage = false;
+  imageInput.value = "";
+  clearPreviewUrl();
   form.elements.namedItem("name").value = String(property.name || "");
   form.elements.namedItem("address").value = String(property.address || "");
   form.elements.namedItem("propertyType").value = String(
@@ -583,6 +731,27 @@ function fillForm(property) {
   );
   form.elements.namedItem("status").value = String(property.status || "active");
   form.elements.namedItem("notes").value = String(property.notes || "");
+  if (property.hasImage) {
+    const cached = cachedPropertyThumb(String(property.id));
+    if (cached) {
+      showPreview(cached);
+      setImageHint("Current photo");
+    } else {
+      try {
+        const file = await apiFile(`/properties/${property.id}/image`);
+        const url = URL.createObjectURL(file.blob);
+        previewObjectUrl = url;
+        showPreview(url);
+        setImageHint("Current photo");
+      } catch {
+        showPreview(null);
+        setImageHint("JPG, PNG, GIF, or WebP \xB7 up to 4 MB");
+      }
+    }
+  } else {
+    showPreview(null);
+    setImageHint("JPG, PNG, GIF, or WebP \xB7 up to 4 MB");
+  }
 }
 function visibleRows() {
   const query = search.trim().toLowerCase();
@@ -613,11 +782,12 @@ function statusBadge(status) {
 }
 function nameCell(row) {
   const name = String(row.name || "Untitled");
+  const id = String(row.id);
   return `<div class="name-cell">
-    <span class="row-avatar tone-${avatarTone(name)}">${escapeHtml(initials(name))}</span>
+    ${propertyThumbHtml(id, Boolean(row.hasImage))}
     <div>
-      <a class="name-title" href="/property.html?id=${escapeHtml(row.id)}">${escapeHtml(name)}</a>
-      <div class="name-sub">${escapeHtml(row.address || "No address")}</div>
+      <a class="name-title" href="/property.html?id=${escapeHtml2(id)}">${escapeHtml2(name)}</a>
+      <div class="name-sub">${escapeHtml2(row.address || "No address")}</div>
     </div>
   </div>`;
 }
@@ -626,8 +796,8 @@ function summaryCell(row) {
   const rent = money(Number(row.expectedMonthlyRent || 0), user.preferredCurrency);
   const value = money(Number(row.currentValue || 0), user.preferredCurrency);
   return `<div class="summary-cell">
-    <div class="name-title">${escapeHtml(type)}</div>
-    <div class="name-sub">Rent ${escapeHtml(rent)} \xB7 Value ${escapeHtml(value)}</div>
+    <div class="name-title">${escapeHtml2(type)}</div>
+    <div class="name-sub">Rent ${escapeHtml2(rent)} \xB7 Value ${escapeHtml2(value)}</div>
   </div>`;
 }
 function actionMenu(row) {
@@ -635,11 +805,11 @@ function actionMenu(row) {
   const open = openMenuId === id;
   const archived = row.status === "archived";
   return `<div class="row-menu ${open ? "open" : ""}">
-    <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">\u22EF</button>
+    <button class="kebab-btn" data-menu="${escapeHtml2(id)}" type="button" aria-label="Actions" aria-expanded="${open}">\u22EF</button>
     <div class="row-menu-pop"${open ? "" : " hidden"}>
-      <a href="/property.html?id=${escapeHtml(id)}">Open</a>
-      <button type="button" data-edit="${escapeHtml(id)}">Edit</button>
-      ${archived ? `<button type="button" data-restore="${escapeHtml(id)}">Restore</button>` : `<button type="button" data-archive="${escapeHtml(id)}">Archive</button>`}
+      <a href="/property.html?id=${escapeHtml2(id)}">Open</a>
+      <button type="button" data-edit="${escapeHtml2(id)}">Edit</button>
+      ${archived ? `<button type="button" data-restore="${escapeHtml2(id)}">Restore</button>` : `<button type="button" data-archive="${escapeHtml2(id)}">Archive</button>`}
     </div>
   </div>`;
 }
@@ -704,8 +874,7 @@ function bindListActions(rows) {
         return;
       }
       openMenuId = null;
-      fillForm(property);
-      openModal("Edit property");
+      void fillForm(property).then(() => openModal("Edit property"));
     });
   });
   list.querySelectorAll("[data-archive]").forEach((button) => {
@@ -766,6 +935,7 @@ function render() {
   const list = document.getElementById("property-list");
   list.innerHTML = renderList(rows);
   bindListActions(rows);
+  void hydrateThumbs(list);
 }
 async function loadProperties() {
   const data = await api(
@@ -777,6 +947,10 @@ async function loadProperties() {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(form);
+  if (selectedImage && selectedImage.size > MAX_IMAGE_BYTES) {
+    setStatus(formStatusEl(), "Images must be 4 MB or smaller.", "error");
+    return;
+  }
   const payload = {
     name: String(formData.get("name") || "").trim(),
     address: String(formData.get("address") || "").trim(),
@@ -789,8 +963,16 @@ form.addEventListener("submit", async (event) => {
     notes: String(formData.get("notes") || ""),
     status: String(formData.get("status") || "active")
   };
+  if (selectedImage) {
+    payload.imageData = await readFileAsBase64(selectedImage);
+    payload.imageFilename = selectedImage.name;
+    payload.imageMimeType = selectedImage.type;
+  } else if (removeImage) {
+    payload.removeImage = true;
+  }
   try {
     if (editingId) {
+      forgetThumb(editingId);
       await api(`/properties/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
       setStatus(document.getElementById("status"), "Property updated.", "success");
     } else {
@@ -800,12 +982,44 @@ form.addEventListener("submit", async (event) => {
     closeModal();
     await loadProperties();
   } catch (error) {
-    setStatus(document.getElementById("status"), error.message, "error");
+    setStatus(formStatusEl(), error.message, "error");
   }
 });
 document.getElementById("add-property-btn")?.addEventListener("click", () => {
   resetForm();
   openModal("Add property");
+});
+imageInput.addEventListener("change", () => {
+  const file = imageInput.files?.[0] || null;
+  if (!file) {
+    return;
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    selectedImage = null;
+    imageInput.value = "";
+    setImageHint("That photo is larger than 4 MB. Choose a smaller file.");
+    return;
+  }
+  if (!file.type.startsWith("image/")) {
+    selectedImage = null;
+    imageInput.value = "";
+    setImageHint("Use a JPG, PNG, GIF, or WebP image.");
+    return;
+  }
+  selectedImage = file;
+  removeImage = false;
+  clearPreviewUrl();
+  previewObjectUrl = URL.createObjectURL(file);
+  showPreview(previewObjectUrl);
+  setImageHint(`${file.name} \xB7 ${(file.size / 1024).toFixed(0)} KB`);
+});
+removeImageBtn.addEventListener("click", () => {
+  selectedImage = null;
+  removeImage = true;
+  imageInput.value = "";
+  clearPreviewUrl();
+  showPreview(null);
+  setImageHint("Photo will be removed when you save.");
 });
 document.getElementById("close-modal")?.addEventListener("click", closeModal);
 document.getElementById("cancel-modal")?.addEventListener("click", closeModal);

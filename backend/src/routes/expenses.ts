@@ -3,7 +3,7 @@ import { requireAuth } from "../auth.js";
 import { parseDateRange, sum } from "../dates.js";
 import { decodeFileData, safeFilename, validateFile } from "../files.js";
 import { Expense, Property, PropertyDocument } from "../models.js";
-import { mapExpense } from "../serialize.js";
+import { lookupProperties, mapExpense } from "../serialize.js";
 import type { AuthedRequest } from "../types.js";
 
 const router = Router();
@@ -84,11 +84,11 @@ router.get("/", async (req: AuthedRequest, res) => {
   const rows = await Expense.find(filter).sort({ expenseDate: -1 }).lean();
   const propertyIds = rows.filter((r) => r.propertyId).map((r) => String(r.propertyId));
   const properties = await Property.find({ _id: { $in: propertyIds } }).lean();
-  const nameById = new Map(properties.map((p) => [String(p._id), p.name]));
+  const propertyById = lookupProperties(properties);
   const docNames = await documentNamesById(rows.map((r) => (r.documentId ? String(r.documentId) : null)));
 
   const expenses = rows.map((r) =>
-    mapExpense(r, r.propertyId ? nameById.get(String(r.propertyId)) : null, {
+    mapExpense(r, r.propertyId ? propertyById.get(String(r.propertyId)) : null, {
       documentName: r.documentId ? docNames.get(String(r.documentId)) ?? null : null
     })
   );
@@ -113,15 +113,15 @@ router.post("/", async (req: AuthedRequest, res) => {
     return res.status(400).json({ message: "category, amount, and expenseDate are required." });
   }
 
-  let propertyName: string | null = null;
+  let property: { name?: string; hasImage?: boolean } | null = null;
   if (scope === "property") {
-    const property = propertyId
+    const found = propertyId
       ? await Property.findOne({ _id: propertyId, userId: req.user!.id })
       : null;
-    if (!property) {
+    if (!found) {
       return res.status(400).json({ message: "Valid propertyId is required for property expenses." });
     }
-    propertyName = property.name;
+    property = found;
   }
 
   const attached = await attachExpenseDocument(req.user!.id, req.body || {}, {
@@ -149,7 +149,7 @@ router.post("/", async (req: AuthedRequest, res) => {
   });
 
   return res.status(201).json({
-    expense: mapExpense(created.toObject(), propertyName, { documentName: attached.documentName }),
+    expense: mapExpense(created.toObject(), property, { documentName: attached.documentName }),
     message: "Expense recorded."
   });
 });
@@ -209,7 +209,7 @@ router.put("/:id", async (req: AuthedRequest, res) => {
   const property = existing.propertyId ? await Property.findById(existing.propertyId).lean() : null;
   const docNames = await documentNamesById([existing.documentId ? String(existing.documentId) : null]);
   return res.json({
-    expense: mapExpense(existing.toObject(), property?.name ?? null, {
+    expense: mapExpense(existing.toObject(), property, {
       documentName: existing.documentId ? docNames.get(String(existing.documentId)) ?? attached.documentName : null
     }),
     message: "Expense updated."

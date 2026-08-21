@@ -298,6 +298,8 @@ function renderList(): void {
         title: String(row.property_name || "Property"),
         subtitle: `Period ${formatMonthYear(String(row.rental_period || ""))} · Due ${formatDateDmY(String(row.expected_payment_date || ""))}`,
         href: row.property_id ? `/property.html?id=${row.property_id}` : undefined,
+        propertyId: row.property_id ? String(row.property_id) : undefined,
+        hasImage: Boolean(row.hasImage),
         status,
         statusLabel: displayStatus(status),
         summaryTitle: `Expected ${money(Number(row.expected_amount), user.preferredCurrency)}`,

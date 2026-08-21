@@ -1,8 +1,17 @@
-import { api, getUser, money, qs, labelize } from "../lib.js";
-import { positionOpenRowMenu } from "../list-view.js";
+import { api, apiFile, getUser, money, qs, labelize } from "../lib.js";
+import {
+  HOUSE_ICON,
+  cachedPropertyThumb,
+  forgetPropertyThumb,
+  hydratePropertyThumbs,
+  positionOpenRowMenu,
+  propertyThumbHtml
+} from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
 const VIEW_KEY = "pf-properties-view";
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp";
 const user = getUser()!;
 
 const root = mountShell(
@@ -19,6 +28,9 @@ let sortBy: "newest" | "name" | "value" | "rent" = "newest";
 let search = "";
 let view: "list" | "grid" = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
 let openMenuId: string | null = null;
+let selectedImage: File | null = null;
+let removeImage = false;
+let previewObjectUrl: string | null = null;
 
 root.innerHTML = `
   <section class="panel table-card">
@@ -76,6 +88,23 @@ root.innerHTML = `
             </select>
           </div>
           <div class="field" style="grid-column:1/-1"><label>Address</label><input name="address" /></div>
+          <div class="field" style="grid-column:1/-1">
+            <label>Property image</label>
+            <div class="property-image-editor">
+              <div class="property-thumb-wrap property-thumb-wrap-lg" id="property-image-preview">
+                <span class="property-thumb placeholder" id="property-image-placeholder">${HOUSE_ICON}</span>
+                <img class="property-thumb" id="property-image-preview-img" alt="" />
+              </div>
+              <div class="property-image-actions">
+                <label class="file-drop">
+                  <input id="property-image" type="file" accept="${IMAGE_ACCEPT}" />
+                  <span class="file-drop-title">Upload property image</span>
+                  <span class="file-drop-sub" id="property-image-sub">JPG, PNG, GIF, or WebP · up to 4 MB</span>
+                </label>
+                <button class="btn secondary" id="remove-property-image" type="button" hidden>Remove image</button>
+              </div>
+            </div>
+          </div>
           <div class="field"><label>Purchase price</label><input name="purchasePrice" type="number" step="0.01" /></div>
           <div class="field"><label>Purchase date</label><input name="purchaseDate" type="date" /></div>
           <div class="field"><label>Current value</label><input name="currentValue" type="number" step="0.01" /></div>
@@ -86,6 +115,7 @@ root.innerHTML = `
           </div>
           <div class="field" style="grid-column:1/-1"><label>Notes</label><textarea name="notes"></textarea></div>
         </div>
+        <div class="status" id="property-form-status" hidden></div>
         <div class="modal-actions">
           <button class="btn secondary" id="cancel-modal" type="button">Cancel</button>
           <button class="btn" type="submit">Save property</button>
@@ -97,6 +127,9 @@ root.innerHTML = `
 
 const form = document.getElementById("property-form") as HTMLFormElement;
 const modal = document.getElementById("property-modal") as HTMLDivElement;
+const imageInput = document.getElementById("property-image") as HTMLInputElement;
+const previewImg = document.getElementById("property-image-preview-img") as HTMLImageElement;
+const removeImageBtn = document.getElementById("remove-property-image") as HTMLButtonElement;
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -106,33 +139,64 @@ function escapeHtml(value: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
-function initials(value: string): string {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) {
-    return "?";
-  }
-  return parts
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join("");
-}
-
-function avatarTone(value: string): number {
-  let hash = 0;
-  for (const char of value) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-  return hash % 5;
-}
-
 function createdTime(row: Record<string, unknown>): number {
   const raw = row.createdAt || row.created_at;
   const time = raw ? new Date(String(raw)).getTime() : 0;
   return Number.isFinite(time) ? time : 0;
 }
 
+function setImageHint(text: string): void {
+  document.getElementById("property-image-sub")!.textContent = text;
+}
+
+function clearPreviewUrl(): void {
+  if (previewObjectUrl) {
+    URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  }
+}
+
+function forgetThumb(id: string): void {
+  forgetPropertyThumb(id);
+}
+
+function showPreview(url: string | null): void {
+  const wrap = document.getElementById("property-image-preview");
+  if (url) {
+    previewImg.src = url;
+    wrap?.classList.add("has-photo");
+    removeImageBtn.hidden = false;
+    return;
+  }
+  previewImg.removeAttribute("src");
+  wrap?.classList.remove("has-photo");
+  removeImageBtn.hidden = true;
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read the photo."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function hydrateThumbs(root: ParentNode): Promise<void> {
+  await hydratePropertyThumbs(root);
+}
+
+function formStatusEl(): HTMLElement | null {
+  return document.getElementById("property-form-status");
+}
+
 function openModal(title: string): void {
   document.getElementById("form-title")!.textContent = title;
+  setStatus(formStatusEl(), "", "info");
   modal.hidden = false;
   document.body.classList.add("modal-open");
   (form.elements.namedItem("name") as HTMLInputElement).focus();
@@ -146,15 +210,25 @@ function closeModal(): void {
 
 function resetForm(): void {
   editingId = null;
+  selectedImage = null;
+  removeImage = false;
   form.reset();
+  imageInput.value = "";
+  clearPreviewUrl();
+  showPreview(null);
+  setImageHint("JPG, PNG, GIF, or WebP · up to 4 MB");
   (form.elements.namedItem("ownershipPercentage") as HTMLInputElement).value = "100";
   (form.elements.namedItem("expectedMonthlyRent") as HTMLInputElement).value = "0";
   (form.elements.namedItem("status") as HTMLSelectElement).value = "active";
   document.getElementById("form-title")!.textContent = "Add property";
 }
 
-function fillForm(property: Record<string, unknown>): void {
+async function fillForm(property: Record<string, unknown>): Promise<void> {
   editingId = String(property.id);
+  selectedImage = null;
+  removeImage = false;
+  imageInput.value = "";
+  clearPreviewUrl();
   (form.elements.namedItem("name") as HTMLInputElement).value = String(property.name || "");
   (form.elements.namedItem("address") as HTMLInputElement).value = String(property.address || "");
   (form.elements.namedItem("propertyType") as HTMLSelectElement).value = String(
@@ -173,6 +247,27 @@ function fillForm(property: Record<string, unknown>): void {
   );
   (form.elements.namedItem("status") as HTMLSelectElement).value = String(property.status || "active");
   (form.elements.namedItem("notes") as HTMLTextAreaElement).value = String(property.notes || "");
+  if (property.hasImage) {
+    const cached = cachedPropertyThumb(String(property.id));
+    if (cached) {
+      showPreview(cached);
+      setImageHint("Current photo");
+    } else {
+      try {
+        const file = await apiFile(`/properties/${property.id}/image`);
+        const url = URL.createObjectURL(file.blob);
+        previewObjectUrl = url;
+        showPreview(url);
+        setImageHint("Current photo");
+      } catch {
+        showPreview(null);
+        setImageHint("JPG, PNG, GIF, or WebP · up to 4 MB");
+      }
+    }
+  } else {
+    showPreview(null);
+    setImageHint("JPG, PNG, GIF, or WebP · up to 4 MB");
+  }
 }
 
 function visibleRows(): Array<Record<string, unknown>> {
@@ -208,10 +303,11 @@ function statusBadge(status: string): string {
 
 function nameCell(row: Record<string, unknown>): string {
   const name = String(row.name || "Untitled");
+  const id = String(row.id);
   return `<div class="name-cell">
-    <span class="row-avatar tone-${avatarTone(name)}">${escapeHtml(initials(name))}</span>
+    ${propertyThumbHtml(id, Boolean(row.hasImage))}
     <div>
-      <a class="name-title" href="/property.html?id=${escapeHtml(row.id)}">${escapeHtml(name)}</a>
+      <a class="name-title" href="/property.html?id=${escapeHtml(id)}">${escapeHtml(name)}</a>
       <div class="name-sub">${escapeHtml(row.address || "No address")}</div>
     </div>
   </div>`;
@@ -311,8 +407,7 @@ function bindListActions(rows: Array<Record<string, unknown>>): void {
         return;
       }
       openMenuId = null;
-      fillForm(property);
-      openModal("Edit property");
+      void fillForm(property).then(() => openModal("Edit property"));
     });
   });
   list.querySelectorAll<HTMLButtonElement>("[data-archive]").forEach((button) => {
@@ -374,6 +469,7 @@ function render(): void {
   const list = document.getElementById("property-list")!;
   list.innerHTML = renderList(rows);
   bindListActions(rows);
+  void hydrateThumbs(list);
 }
 
 async function loadProperties(): Promise<void> {
@@ -387,7 +483,11 @@ async function loadProperties(): Promise<void> {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(form);
-  const payload = {
+  if (selectedImage && selectedImage.size > MAX_IMAGE_BYTES) {
+    setStatus(formStatusEl(), "Images must be 4 MB or smaller.", "error");
+    return;
+  }
+  const payload: Record<string, unknown> = {
     name: String(formData.get("name") || "").trim(),
     address: String(formData.get("address") || "").trim(),
     propertyType: String(formData.get("propertyType") || "residential"),
@@ -399,9 +499,17 @@ form.addEventListener("submit", async (event) => {
     notes: String(formData.get("notes") || ""),
     status: String(formData.get("status") || "active")
   };
+  if (selectedImage) {
+    payload.imageData = await readFileAsBase64(selectedImage);
+    payload.imageFilename = selectedImage.name;
+    payload.imageMimeType = selectedImage.type;
+  } else if (removeImage) {
+    payload.removeImage = true;
+  }
 
   try {
     if (editingId) {
+      forgetThumb(editingId);
       await api(`/properties/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
       setStatus(document.getElementById("status"), "Property updated.", "success");
     } else {
@@ -411,13 +519,45 @@ form.addEventListener("submit", async (event) => {
     closeModal();
     await loadProperties();
   } catch (error) {
-    setStatus(document.getElementById("status"), (error as Error).message, "error");
+    setStatus(formStatusEl(), (error as Error).message, "error");
   }
 });
 
 document.getElementById("add-property-btn")?.addEventListener("click", () => {
   resetForm();
   openModal("Add property");
+});
+imageInput.addEventListener("change", () => {
+  const file = imageInput.files?.[0] || null;
+  if (!file) {
+    return;
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    selectedImage = null;
+    imageInput.value = "";
+    setImageHint("That photo is larger than 4 MB. Choose a smaller file.");
+    return;
+  }
+  if (!file.type.startsWith("image/")) {
+    selectedImage = null;
+    imageInput.value = "";
+    setImageHint("Use a JPG, PNG, GIF, or WebP image.");
+    return;
+  }
+  selectedImage = file;
+  removeImage = false;
+  clearPreviewUrl();
+  previewObjectUrl = URL.createObjectURL(file);
+  showPreview(previewObjectUrl);
+  setImageHint(`${file.name} · ${(file.size / 1024).toFixed(0)} KB`);
+});
+removeImageBtn.addEventListener("click", () => {
+  selectedImage = null;
+  removeImage = true;
+  imageInput.value = "";
+  clearPreviewUrl();
+  showPreview(null);
+  setImageHint("Photo will be removed when you save.");
 });
 document.getElementById("close-modal")?.addEventListener("click", closeModal);
 document.getElementById("cancel-modal")?.addEventListener("click", closeModal);

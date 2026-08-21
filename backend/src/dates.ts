@@ -22,14 +22,21 @@ export function endOfYear(date = new Date()): string {
   return `${date.getUTCFullYear()}-12-31`;
 }
 
+function isoDay(value?: string): string | null {
+  const raw = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}
+
 export function parseDateRange(query: {
   from?: string;
   to?: string;
   month?: string;
   year?: string;
 }): { from: string; to: string } {
-  if (query.from && query.to) {
-    return { from: query.from, to: query.to };
+  const from = isoDay(query.from);
+  const to = isoDay(query.to);
+  if (from && to) {
+    return from <= to ? { from, to } : { from: to, to: from };
   }
 
   if (query.month) {

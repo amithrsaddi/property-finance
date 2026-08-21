@@ -583,10 +583,10 @@ function donut(percent, kind) {
     <span class="donut-pct">${Math.round(clamped)}%</span>
   </div>`;
 }
-function renderChart(points, style) {
-  const width = 760;
-  const height = 220;
-  const pad = { l: 40, r: 16, t: 12, b: 28 };
+function renderChart(points, style, size) {
+  const width = size?.width ?? 760;
+  const height = size?.height ?? 248;
+  const pad = { l: 36, r: 16, t: 10, b: 26 };
   const innerW = width - pad.l - pad.r;
   const innerH = height - pad.t - pad.b;
   const max = Math.max(...points.flatMap((p) => [p.rent, p.expenses]), 1);
@@ -644,7 +644,7 @@ function renderChart(points, style) {
       <span><i class="legend-expense"></i> Expenses</span>
     </div>
     <div class="overview-chart-canvas">
-      <svg class="overview-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Rent versus expenses ${style} chart">
+      <svg class="overview-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" width="100%" height="100%" role="img" aria-label="Rent versus expenses ${style} chart">
         ${hGrid}${vGrid}${xAxis}
         <rect class="chart-hover-band" id="chart-hover-band" x="0" y="${pad.t}" width="${n(band)}" height="${n(innerH)}" />
         ${series}
@@ -777,9 +777,42 @@ function renderBreakdowns(data) {
       </article>`
   ).join("");
 }
+function chartBox() {
+  const host = document.getElementById("chart");
+  const width = Math.max(360, Math.round(host?.clientWidth || 760));
+  const height = Math.max(240, Math.round(host?.clientHeight ? Math.max(host.clientHeight - 28, 240) : 248));
+  return { width, height };
+}
+function paintChart(points, style) {
+  const host = document.getElementById("chart");
+  if (!host) {
+    return;
+  }
+  const size = chartBox();
+  const key = `${size.width}x${size.height}:${style}:${points.length}`;
+  if (host.dataset.chartKey === key && host.querySelector("svg.overview-chart")) {
+    return;
+  }
+  host.dataset.chartKey = key;
+  host.innerHTML = renderChart(points, style, size);
+}
+function bindChartResize() {
+  const host = document.getElementById("chart");
+  if (!host || host.dataset.resizeBound === "1") {
+    return;
+  }
+  host.dataset.resizeBound = "1";
+  const observer = new ResizeObserver(() => {
+    if (cache) {
+      paintChart(cache.monthly, getChartStyle());
+    }
+  });
+  observer.observe(host);
+}
 function render(data) {
   document.getElementById("cards").innerHTML = renderCards(data);
-  document.getElementById("chart").innerHTML = renderChart(data.monthly, getChartStyle());
+  paintChart(data.monthly, getChartStyle());
+  bindChartResize();
   syncChartMenu();
   document.getElementById("status-overview").innerHTML = renderStatus(data);
   document.getElementById("breakdowns").innerHTML = renderBreakdowns(data);
@@ -840,7 +873,7 @@ chartMenuPop?.addEventListener("click", (event) => {
   }
   setChartStyle(style);
   setChartMenuOpen(false);
-  document.getElementById("chart").innerHTML = renderChart(cache.monthly, style);
+  paintChart(cache.monthly, style);
   syncChartMenu();
 });
 document.addEventListener("click", () => setChartMenuOpen(false));

@@ -26,6 +26,7 @@ type MortgageRow = {
   end_date: string | null;
   fixed_rate_expiry: string | null;
   notes: string;
+  hasImage?: boolean;
   status: string;
 };
 
@@ -220,6 +221,8 @@ function renderRates(): void {
       title: String(m.property_name || "Property"),
       subtitle: String(m.lender || "Lender"),
       href: m.property_id ? `/property.html?id=${m.property_id}` : undefined,
+      propertyId: m.property_id ? String(m.property_id) : undefined,
+      hasImage: Boolean(m.hasImage),
       status: m.status === "archived" ? "archived" : String(m.mortgage_type || "repayment"),
       statusLabel: labelize(String(m.mortgage_type || "repayment")),
       summaryTitle: money(Number(m.outstanding_balance), user.preferredCurrency),

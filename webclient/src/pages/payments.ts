@@ -13,6 +13,7 @@ import {
 import { mountShell, setStatus } from "../shell.js";
 
 const VIEW_KEY = "pf-payments-view";
+const PAGE_SIZE = 10;
 const root = mountShell(
   "/payments.html",
   "Payments",
@@ -105,6 +106,8 @@ let search = "";
 let sortBy = "due";
 let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
 let openMenuId: string | null = null;
+let page = 1;
+const selectedIds = new Set<string>();
 
 const paymentModal = document.getElementById("payment-modal") as HTMLDivElement;
 const paymentForm = document.getElementById("payment-form") as HTMLFormElement;
@@ -201,6 +204,148 @@ function sortRows(rows: Array<Record<string, unknown>>, keys: string[]): Array<R
   return filtered;
 }
 
+function totalPagesFor(total: number): number {
+  return Math.max(1, Math.ceil(total / PAGE_SIZE));
+}
+
+function clampPage(total: number): void {
+  page = Math.min(Math.max(1, page), totalPagesFor(total));
+}
+
+function resetPage(): void {
+  page = 1;
+  openMenuId = null;
+  selectedIds.clear();
+}
+
+function bulkBarHtml(): string {
+  if (!selectedIds.size) {
+    return "";
+  }
+  return `<div class="list-bulk">
+    <span>${selectedIds.size} selected</span>
+    <button class="btn" type="button" data-bulk="paid">Mark paid</button>
+    <button class="btn secondary" type="button" data-bulk="unpaid">Mark unpaid</button>
+    <button class="btn ghost" type="button" data-bulk="clear">Clear</button>
+  </div>`;
+}
+
+function bindSelection(root: HTMLElement, pageRows: Array<Record<string, unknown>>): void {
+  const pageIds = pageRows.map((row) => String(row.id || row._id));
+  const selectAll = root.querySelector<HTMLInputElement>("[data-select-all]");
+  if (selectAll) {
+    const selectedOnPage = pageIds.filter((id) => selectedIds.has(id)).length;
+    selectAll.indeterminate = selectedOnPage > 0 && selectedOnPage < pageIds.length;
+    selectAll.addEventListener("click", (event) => event.stopPropagation());
+    selectAll.addEventListener("change", () => {
+      if (selectAll.checked) {
+        pageIds.forEach((id) => selectedIds.add(id));
+      } else {
+        pageIds.forEach((id) => selectedIds.delete(id));
+      }
+      render();
+    });
+  }
+  root.querySelectorAll<HTMLInputElement>("[data-select]").forEach((input) => {
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("change", () => {
+      const id = String(input.dataset.select || "");
+      if (!id) {
+        return;
+      }
+      if (input.checked) {
+        selectedIds.add(id);
+      } else {
+        selectedIds.delete(id);
+      }
+      render();
+    });
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-bulk]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = String(button.dataset.bulk || "");
+      if (action === "clear") {
+        selectedIds.clear();
+        render();
+        return;
+      }
+      if (action === "paid" || action === "unpaid") {
+        void applyBulkStatus(action);
+      }
+    });
+  });
+}
+
+async function applyBulkStatus(status: "paid" | "unpaid"): Promise<void> {
+  const ids = [...selectedIds];
+  if (!ids.length) {
+    return;
+  }
+  try {
+    const data = await api<{ updated: number; message: string }>("/mortgages/payments/bulk", {
+      method: "POST",
+      body: JSON.stringify({ ids, status })
+    });
+    selectedIds.clear();
+    setStatus(document.getElementById("status"), data.message || "Payments updated.", "success");
+    await loadViews();
+  } catch (error) {
+    setStatus(document.getElementById("status"), (error as Error).message, "error");
+  }
+}
+
+function pagerHtml(total: number): string {
+  if (!total) {
+    return "";
+  }
+  const pages = totalPagesFor(total);
+  const start = (page - 1) * PAGE_SIZE + 1;
+  const end = Math.min(page * PAGE_SIZE, total);
+  if (pages === 1) {
+    return `<nav class="list-pager" aria-label="Pagination">
+      <span class="list-pager-meta">${total} payment${total === 1 ? "" : "s"}</span>
+    </nav>`;
+  }
+  const windowSize = 5;
+  let from = Math.max(1, page - Math.floor(windowSize / 2));
+  const to = Math.min(pages, from + windowSize - 1);
+  from = Math.max(1, to - windowSize + 1);
+  const numbers = Array.from({ length: to - from + 1 }, (_, i) => from + i)
+    .map(
+      (n) =>
+        `<button class="list-pager-page${n === page ? " active" : ""}" type="button" data-page="${n}" aria-current="${
+          n === page ? "page" : "false"
+        }">${n}</button>`
+    )
+    .join("");
+  return `<nav class="list-pager" aria-label="Pagination">
+    <span class="list-pager-meta">${start}–${end} of ${total}</span>
+    <div class="list-pager-btns">
+      <button class="btn ghost" type="button" data-page="prev"${page <= 1 ? " disabled" : ""}>Previous</button>
+      ${numbers}
+      <button class="btn ghost" type="button" data-page="next"${page >= pages ? " disabled" : ""}>Next</button>
+    </div>
+  </nav>`;
+}
+
+function bindPager(root: HTMLElement, total: number): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const token = String(button.dataset.page || "");
+      if (token === "prev") {
+        page -= 1;
+      } else if (token === "next") {
+        page += 1;
+      } else {
+        page = Number(token) || page;
+      }
+      clampPage(total);
+      openMenuId = null;
+      render();
+    });
+  });
+}
+
 function render(): void {
   if (!views) {
     return;
@@ -212,21 +357,42 @@ function render(): void {
 
   const source = views[activeView];
   const rows = sortRows(source, ["property_name", "lender", "status", "notes", "due_date", "paid_date"]);
-  content.innerHTML = renderDataList(
-    rows.map((r) => {
+  clampPage(rows.length);
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  content.innerHTML = `${bulkBarHtml()}${renderDataList(
+    pageRows.map((r) => {
       const id = String(r.id || r._id);
       const status = String(r.status || "upcoming");
       return {
         id,
         title: String(r.property_name || "Property"),
-        subtitle: `${r.lender || "Lender"} · Due ${formatDateDmY(String(r.due_date || ""))}`,
+        subtitle: "",
         href: r.property_id ? `/property.html?id=${r.property_id}` : undefined,
+        propertyId: r.property_id ? String(r.property_id) : undefined,
+        hasImage: Boolean(r.hasImage),
         status,
         statusLabel: labelize(status),
-        summaryTitle: `Expected ${money(Number(r.expected_amount), user.preferredCurrency)}`,
-        summarySub: `Paid ${
-          r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "-"
-        }${r.paid_date ? ` · ${formatDateDmY(String(r.paid_date))}` : ""}`,
+        summaryTitle: "",
+        summarySub: "",
+        extras: [
+          {
+            header: "Lender",
+            title: String(r.lender || "—")
+          },
+          {
+            header: "Due date",
+            title: r.due_date ? formatDateDmY(String(r.due_date)) : "—"
+          },
+          {
+            header: "Expected",
+            title: money(Number(r.expected_amount), user.preferredCurrency)
+          },
+          {
+            header: "Paid",
+            title:
+              r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "—"
+          }
+        ],
         actions: `<button type="button" data-edit="${id}" data-mode="edit">Edit</button>${
           status === "paid" ? "" : `<button type="button" data-edit="${id}" data-mode="pay">Mark paid</button>`
         }`
@@ -234,8 +400,9 @@ function render(): void {
     }),
     view,
     "No payments in this view.",
-    openMenuId
-  );
+    openMenuId,
+    { selectedIds }
+  )}${pagerHtml(rows.length)}`;
   bindRowMenus(
     content,
     openMenuId,
@@ -244,9 +411,11 @@ function render(): void {
     },
     render
   );
+  bindPager(content, rows.length);
+  bindSelection(content, pageRows);
   content.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => {
-      const row = rows.find((r) => String(r.id || r._id) === String(button.dataset.edit));
+      const row = pageRows.find((r) => String(r.id || r._id) === String(button.dataset.edit));
       if (row) {
         openMenuId = null;
         openPaymentEditor(row, button.dataset.mode === "pay");
@@ -409,6 +578,7 @@ paymentForm.addEventListener("submit", async (event) => {
       setStatus(document.getElementById("status"), "Payment updated.", "success");
     }
     closeBackdrop(paymentModal);
+    resetPage();
     if (status === "paid") {
       activeView = "past";
     } else if (dueDate) {
@@ -468,14 +638,16 @@ document.getElementById("view-tabs")?.addEventListener("click", (event) => {
     target.dataset.view === "past"
   ) {
     activeView = target.dataset.view;
-    openMenuId = null;
+    resetPage();
     render();
   }
 });
 document.getElementById("filterProperty")?.addEventListener("change", () => {
+  resetPage();
   void loadViews();
 });
 document.getElementById("filterYear")?.addEventListener("change", () => {
+  resetPage();
   void loadViews();
 });
 
@@ -488,10 +660,12 @@ bindListChrome({
   },
   onSearch: (value) => {
     search = value;
+    resetPage();
     render();
   },
   onSort: (value) => {
     sortBy = value;
+    resetPage();
     render();
   }
 });

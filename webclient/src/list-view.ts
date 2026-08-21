@@ -1,3 +1,5 @@
+import { apiFile } from "./lib.js";
+
 export type ListViewMode = "list" | "grid";
 
 export type ListExtra = {
@@ -17,6 +19,8 @@ export type ListRow = {
   summarySub: string;
   extras?: ListExtra[];
   actions?: string;
+  propertyId?: string | null;
+  hasImage?: boolean;
 };
 
 export function escapeHtml(value: unknown): string {
@@ -25,6 +29,79 @@ export function escapeHtml(value: unknown): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+export const HOUSE_ICON = `<svg class="property-thumb-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 21V10.5L12 4l8 6.5V21"/><path fill="none" stroke="currentColor" stroke-width="1.8" d="M9 21v-6h6v6"/></svg>`;
+
+const thumbUrls = new Map<string, string>();
+
+export function cachedPropertyThumb(id: string): string | undefined {
+  return thumbUrls.get(id);
+}
+
+export function rememberPropertyThumb(id: string, url: string): void {
+  thumbUrls.set(id, url);
+}
+
+export function forgetPropertyThumb(id: string): void {
+  const url = thumbUrls.get(id);
+  if (url) {
+    URL.revokeObjectURL(url);
+    thumbUrls.delete(id);
+  }
+}
+
+export function propertyThumbHtml(propertyId: string, hasImage = false): string {
+  const id = String(propertyId || "");
+  const cached = id ? thumbUrls.get(id) : "";
+  return `<span class="property-thumb-wrap${cached ? " has-photo" : ""}">
+    <span class="property-thumb placeholder">${HOUSE_ICON}</span>
+    ${
+      id && hasImage
+        ? `<img class="property-thumb" alt="" data-property-image="${escapeHtml(id)}"${
+            cached ? ` src="${escapeHtml(cached)}"` : ""
+          }>`
+        : ""
+    }
+  </span>`;
+}
+
+export async function hydratePropertyThumbs(root: ParentNode): Promise<void> {
+  const imgs = [...root.querySelectorAll<HTMLImageElement>("img[data-property-image]")];
+  const unique = new Map<string, HTMLImageElement[]>();
+  for (const img of imgs) {
+    const id = img.dataset.propertyImage || "";
+    if (!id) {
+      continue;
+    }
+    const group = unique.get(id) || [];
+    group.push(img);
+    unique.set(id, group);
+  }
+  await Promise.all(
+    [...unique.entries()].map(async ([id, group]) => {
+      let url = group.find((img) => img.getAttribute("src"))?.getAttribute("src") || thumbUrls.get(id) || "";
+      if (!url) {
+        try {
+          const file = await apiFile(`/properties/${id}/image`);
+          url = URL.createObjectURL(file.blob);
+          thumbUrls.set(id, url);
+        } catch {
+          return;
+        }
+      }
+      for (const img of group) {
+        img.src = url;
+        const wrap = img.closest(".property-thumb-wrap");
+        const reveal = () => wrap?.classList.add("has-photo");
+        if (img.complete && img.naturalWidth) {
+          reveal();
+        } else {
+          img.addEventListener("load", reveal, { once: true });
+        }
+      }
+    })
+  );
 }
 
 export function initials(value: string): string {
@@ -74,15 +151,24 @@ export function statusPill(status: string, label?: string): string {
   return `<span class="pill ${pillKind(status)}">${escapeHtml(text)}</span>`;
 }
 
-export function nameCell(title: string, subtitle: string, href?: string): string {
+export function nameCell(
+  title: string,
+  subtitle: string,
+  href?: string,
+  property?: { propertyId?: string | null; hasImage?: boolean }
+): string {
   const heading = href
     ? `<a class="name-title" href="${escapeHtml(href)}">${escapeHtml(title)}</a>`
     : `<div class="name-title">${escapeHtml(title)}</div>`;
+  const propertyId = String(property?.propertyId || "");
+  const avatar = propertyId
+    ? propertyThumbHtml(propertyId, Boolean(property?.hasImage))
+    : `<span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>`;
   return `<div class="name-cell">
-    <span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>
+    ${avatar}
     <div>
       ${heading}
-      <div class="name-sub">${escapeHtml(subtitle)}</div>
+      ${subtitle ? `<div class="name-sub">${escapeHtml(subtitle)}</div>` : ""}
     </div>
   </div>`;
 }
@@ -139,17 +225,41 @@ export function sortFieldHtml(options: Array<{ value: string; label: string }>, 
   </label>`;
 }
 
-export function renderDataList(rows: ListRow[], view: ListViewMode, empty: string, openMenuId: string | null): string {
+export type ListRenderOptions = {
+  selectedIds?: Set<string>;
+};
+
+export function renderDataList(
+  rows: ListRow[],
+  view: ListViewMode,
+  empty: string,
+  openMenuId: string | null,
+  options?: ListRenderOptions
+): string {
   if (!rows.length) {
     return `<p class="empty">${empty}</p>`;
   }
+  const selectedIds = options?.selectedIds;
+  const selectable = Boolean(selectedIds);
+  const selectCell = (row: ListRow) => {
+    if (!selectable || !selectedIds) {
+      return "";
+    }
+    const checked = selectedIds.has(row.id);
+    return `<label class="row-check">
+      <span class="sr-only">Select ${escapeHtml(row.title)}</span>
+      <input type="checkbox" data-select="${escapeHtml(row.id)}"${checked ? " checked" : ""} />
+    </label>`;
+  };
+  const allSelected = selectable && rows.length > 0 && rows.every((row) => selectedIds!.has(row.id));
+  const someSelected = selectable && rows.some((row) => selectedIds!.has(row.id));
   const hasActions = rows.some((row) => Boolean(row.actions));
   const extraHeaders = rows[0]?.extras?.map((extra) => extra.header) ?? [];
   const hasExtras = extraHeaders.length > 0;
   const cells = (row: ListRow) => {
     const actions = kebabMenu(row.id, openMenuId === row.id, row.actions || "");
     return {
-      name: nameCell(row.title, row.subtitle, row.href),
+      name: nameCell(row.title, row.subtitle, row.href, row),
       status: statusPill(row.status, row.statusLabel),
       summary: summaryCell(row.summaryTitle, row.summarySub),
       extras: extraHeaders.map((header, index) => {
@@ -177,6 +287,7 @@ export function renderDataList(rows: ListRow[], view: ListViewMode, empty: strin
           : cell.summary;
         return `<article class="property-card">
           <div class="property-card-head">
+            ${selectCell(row)}
             ${cell.name}
             ${hasActions ? cell.actions : ""}
           </div>
@@ -189,9 +300,19 @@ export function renderDataList(rows: ListRow[], view: ListViewMode, empty: strin
       .join("")}</div>`;
   }
   return `<div class="data-table-wrap">
-    <table class="data-table${hasExtras ? " has-extras" : ""}">
+    <table class="data-table${hasExtras ? " has-extras" : ""}${selectable ? " has-select" : ""}">
       <thead>
         <tr>
+          ${
+            selectable
+              ? `<th class="col-check"><label class="row-check">
+                  <span class="sr-only">Select all</span>
+                  <input type="checkbox" data-select-all${allSelected ? " checked" : ""}${
+                    someSelected && !allSelected ? " data-indeterminate=\"true\"" : ""
+                  } />
+                </label></th>`
+              : ""
+          }
           <th>Name</th>
           <th>Status</th>
           ${
@@ -215,6 +336,7 @@ export function renderDataList(rows: ListRow[], view: ListViewMode, empty: strin
                   .join("")
               : `<td>${cell.summary}</td>`;
             return `<tr>
+              ${selectable ? `<td class="col-check">${selectCell(row)}</td>` : ""}
               <td>${cell.name}</td>
               <td>${cell.status}</td>
               ${extraTds}
@@ -301,6 +423,7 @@ export function bindRowMenus(
   if (openMenuId) {
     requestAnimationFrame(() => positionOpenRowMenu(root));
   }
+  void hydratePropertyThumbs(root);
 }
 
 export function matchesQuery(row: Record<string, unknown>, query: string, keys: string[]): boolean {
