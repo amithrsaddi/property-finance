@@ -6,12 +6,13 @@ import {
   matchesQuery,
   searchFieldHtml,
   viewToggleHtml,
+  storedListView,
   type ListViewMode
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
 const PAGE_VIEW_KEY = "pf-documents-page-view";
-const FOLDER_VIEW_KEY = "pf-documents-folder-view";
+const FOLDER_VIEW_KEY = "pf-documents-folder-view-v2";
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const ACCEPT =
   ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
@@ -35,7 +36,7 @@ let foldersCache: DocRow[] = [];
 let properties: Array<{ id: string; name: string }> = [];
 let currentFolderId: string | null = null;
 let pageView: PageView = sessionStorage.getItem(PAGE_VIEW_KEY) === "explorer" ? "explorer" : "timeline";
-let folderView: ListViewMode = sessionStorage.getItem(FOLDER_VIEW_KEY) === "list" ? "list" : "grid";
+let folderView: ListViewMode = storedListView(FOLDER_VIEW_KEY, "list");
 let fileTab: FileTab = "all";
 let search = "";
 let locationFilter = "";

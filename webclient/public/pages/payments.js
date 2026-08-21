@@ -144,6 +144,16 @@ function labelize(value) {
 }
 
 // src/list-view.ts
+function storedListView(key, fallback) {
+  try {
+    const value = sessionStorage.getItem(key);
+    if (value === "list" || value === "grid") {
+      return value;
+    }
+  } catch {
+  }
+  return fallback;
+}
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -363,11 +373,11 @@ function renderDataList(rows, view2, empty, openMenuId2, options) {
     const cell = cells(row);
     const extraTds = hasExtras ? cell.extras.map(
       (html, index) => `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
-    ).join("") : `<td>${cell.summary}</td>`;
+    ).join("") : `<td class="col-summary">${cell.summary}</td>`;
     return `<tr>
               ${selectable ? `<td class="col-check">${selectCell(row)}</td>` : ""}
-              <td>${cell.name}</td>
-              <td>${cell.status}</td>
+              <td class="col-name">${cell.name}</td>
+              <td class="col-status">${cell.status}</td>
               ${extraTds}
               ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
             </tr>`;
@@ -742,16 +752,17 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/payments.ts
-var VIEW_KEY = "pf-payments-view";
+var VIEW_KEY = "pf-payments-view-v2";
 var PAGE_SIZE = 10;
+var user = getUser();
+var presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
+var view = storedListView(VIEW_KEY, "list");
 var root = mountShell(
   "/payments.html",
   "Payments",
   "Upcoming, current, and past mortgage payments.",
   `<button class="btn" id="add-payment-btn" type="button">+ Add Mortgage Payment</button>`
 );
-var user = getUser();
-var presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 root.innerHTML = `
   <section class="panel table-card">
     <div class="table-toolbar">
@@ -773,7 +784,7 @@ root.innerHTML = `
   { value: "amount", label: "Amount" }
 ])}
         ${searchFieldHtml()}
-        ${viewToggleHtml(sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list")}
+        ${viewToggleHtml(view)}
       </div>
     </div>
     <div class="status" id="status" hidden></div>
@@ -824,7 +835,6 @@ var views = null;
 var activeView = "upcoming";
 var search = "";
 var sortBy = "due";
-var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
 var openMenuId = null;
 var page = 1;
 var selectedIds = /* @__PURE__ */ new Set();

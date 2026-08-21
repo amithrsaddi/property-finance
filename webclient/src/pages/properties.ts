@@ -5,11 +5,12 @@ import {
   forgetPropertyThumb,
   hydratePropertyThumbs,
   positionOpenRowMenu,
-  propertyThumbHtml
+  propertyThumbHtml,
+  storedListView
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
-const VIEW_KEY = "pf-properties-view";
+const VIEW_KEY = "pf-properties-view-v2";
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp";
 const user = getUser()!;
@@ -26,7 +27,7 @@ let cache: Array<Record<string, unknown>> = [];
 let statusFilter: "all" | "archived" = "all";
 let sortBy: "newest" | "name" | "value" | "rent" = "newest";
 let search = "";
-let view: "list" | "grid" = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+let view: "list" | "grid" = storedListView(VIEW_KEY, "grid");
 let openMenuId: string | null = null;
 let selectedImage: File | null = null;
 let removeImage = false;
@@ -375,9 +376,9 @@ function renderList(rows: Array<Record<string, unknown>>): string {
         ${rows
           .map(
             (row) => `<tr>
-              <td>${nameCell(row)}</td>
-              <td>${statusBadge(String(row.status))}</td>
-              <td>${summaryCell(row)}</td>
+              <td class="col-name">${nameCell(row)}</td>
+              <td class="col-status">${statusBadge(String(row.status))}</td>
+              <td class="col-summary">${summaryCell(row)}</td>
               <td class="col-actions">${actionMenu(row)}</td>
             </tr>`
           )

@@ -166,6 +166,16 @@ function labelize(value) {
 }
 
 // src/list-view.ts
+function storedListView(key, fallback) {
+  try {
+    const value = sessionStorage.getItem(key);
+    if (value === "list" || value === "grid") {
+      return value;
+    }
+  } catch {
+  }
+  return fallback;
+}
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -385,11 +395,11 @@ function renderDataList(rows, view2, empty, openMenuId2, options) {
     const cell = cells(row);
     const extraTds = hasExtras ? cell.extras.map(
       (html, index) => `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
-    ).join("") : `<td>${cell.summary}</td>`;
+    ).join("") : `<td class="col-summary">${cell.summary}</td>`;
     return `<tr>
               ${selectable ? `<td class="col-check">${selectCell(row)}</td>` : ""}
-              <td>${cell.name}</td>
-              <td>${cell.status}</td>
+              <td class="col-name">${cell.name}</td>
+              <td class="col-status">${cell.status}</td>
               ${extraTds}
               ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
             </tr>`;
@@ -764,7 +774,7 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/rent.ts
-var VIEW_KEY = "pf-rent-view";
+var VIEW_KEY = "pf-rent-view-v2";
 var root = mountShell(
   "/rent.html",
   "Rent",
@@ -781,7 +791,7 @@ var editingId = null;
 var cache = [];
 var search = "";
 var sortBy = "due";
-var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+var view = storedListView(VIEW_KEY, "list");
 var openMenuId = null;
 root.innerHTML = `
   <section class="panel table-card">

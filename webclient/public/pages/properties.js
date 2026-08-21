@@ -136,6 +136,16 @@ function labelize(value) {
 }
 
 // src/list-view.ts
+function storedListView(key, fallback) {
+  try {
+    const value = sessionStorage.getItem(key);
+    if (value === "list" || value === "grid") {
+      return value;
+    }
+  } catch {
+  }
+  return fallback;
+}
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -516,7 +526,7 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/properties.ts
-var VIEW_KEY = "pf-properties-view";
+var VIEW_KEY = "pf-properties-view-v2";
 var MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 var IMAGE_ACCEPT = ".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp";
 var user = getUser();
@@ -531,7 +541,7 @@ var cache = [];
 var statusFilter = "all";
 var sortBy = "newest";
 var search = "";
-var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+var view = storedListView(VIEW_KEY, "grid");
 var openMenuId = null;
 var selectedImage = null;
 var removeImage = false;
@@ -844,9 +854,9 @@ function renderList(rows) {
       <tbody>
         ${rows.map(
     (row) => `<tr>
-              <td>${nameCell(row)}</td>
-              <td>${statusBadge(String(row.status))}</td>
-              <td>${summaryCell(row)}</td>
+              <td class="col-name">${nameCell(row)}</td>
+              <td class="col-status">${statusBadge(String(row.status))}</td>
+              <td class="col-summary">${summaryCell(row)}</td>
               <td class="col-actions">${actionMenu(row)}</td>
             </tr>`
   ).join("")}

@@ -120,6 +120,16 @@ function formatDateDmY(value) {
 }
 
 // src/list-view.ts
+function storedListView(key, fallback) {
+  try {
+    const value = sessionStorage.getItem(key);
+    if (value === "list" || value === "grid") {
+      return value;
+    }
+  } catch {
+  }
+  return fallback;
+}
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -532,7 +542,7 @@ function setStatus(el, message, type = "info") {
 
 // src/pages/documents.ts
 var PAGE_VIEW_KEY = "pf-documents-page-view";
-var FOLDER_VIEW_KEY = "pf-documents-folder-view";
+var FOLDER_VIEW_KEY = "pf-documents-folder-view-v2";
 var MAX_FILE_BYTES = 4 * 1024 * 1024;
 var ACCEPT = ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
 var FOLDER_GLYPH = `<svg class="folder-glyph" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M8 18a6 6 0 0 1 6-6h13.2l3.8 5.2H50a6 6 0 0 1 6 6v23.8A6.2 6.2 0 0 1 49.8 53H14.2A6.2 6.2 0 0 1 8 46.8z"/></svg>`;
@@ -549,7 +559,7 @@ var foldersCache = [];
 var properties = [];
 var currentFolderId = null;
 var pageView = sessionStorage.getItem(PAGE_VIEW_KEY) === "explorer" ? "explorer" : "timeline";
-var folderView = sessionStorage.getItem(FOLDER_VIEW_KEY) === "list" ? "list" : "grid";
+var folderView = storedListView(FOLDER_VIEW_KEY, "list");
 var fileTab = "all";
 var search = "";
 var locationFilter = "";

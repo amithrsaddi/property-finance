@@ -7,11 +7,12 @@ import {
   searchFieldHtml,
   sortFieldHtml,
   viewToggleHtml,
+  storedListView,
   type ListViewMode
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
-const VIEW_KEY = "pf-rent-view";
+const VIEW_KEY = "pf-rent-view-v2";
 const root = mountShell(
   "/rent.html",
   "Rent",
@@ -28,7 +29,7 @@ let editingId: string | null = null;
 let cache: Array<Record<string, unknown>> = [];
 let search = "";
 let sortBy = "due";
-let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+let view: ListViewMode = storedListView(VIEW_KEY, "list");
 let openMenuId: string | null = null;
 
 root.innerHTML = `

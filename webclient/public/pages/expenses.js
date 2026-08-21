@@ -148,6 +148,16 @@ function labelize(value) {
 }
 
 // src/list-view.ts
+function storedListView(key, fallback) {
+  try {
+    const value = sessionStorage.getItem(key);
+    if (value === "list" || value === "grid") {
+      return value;
+    }
+  } catch {
+  }
+  return fallback;
+}
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -367,11 +377,11 @@ function renderDataList(rows, view2, empty, openMenuId2, options) {
     const cell = cells(row);
     const extraTds = hasExtras ? cell.extras.map(
       (html, index) => `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
-    ).join("") : `<td>${cell.summary}</td>`;
+    ).join("") : `<td class="col-summary">${cell.summary}</td>`;
     return `<tr>
               ${selectable ? `<td class="col-check">${selectCell(row)}</td>` : ""}
-              <td>${cell.name}</td>
-              <td>${cell.status}</td>
+              <td class="col-name">${cell.name}</td>
+              <td class="col-status">${cell.status}</td>
               ${extraTds}
               ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
             </tr>`;
@@ -746,7 +756,7 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/expenses.ts
-var VIEW_KEY = "pf-expenses-view";
+var VIEW_KEY = "pf-expenses-view-v2";
 var MAX_FILE_BYTES = 4 * 1024 * 1024;
 var ACCEPT = ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
 var root = mountShell(
@@ -760,7 +770,7 @@ var presetPropertyId = new URLSearchParams(window.location.search).get("property
 var cache = [];
 var search = "";
 var sortBy = "date";
-var view = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+var view = storedListView(VIEW_KEY, "list");
 var openMenuId = null;
 var scope = "property";
 var selectedFile = null;

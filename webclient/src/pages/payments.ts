@@ -8,20 +8,22 @@ import {
   searchFieldHtml,
   sortFieldHtml,
   viewToggleHtml,
+  storedListView,
   type ListViewMode
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
-const VIEW_KEY = "pf-payments-view";
+const VIEW_KEY = "pf-payments-view-v2";
 const PAGE_SIZE = 10;
+const user = getUser()!;
+const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
+let view: ListViewMode = storedListView(VIEW_KEY, "list");
 const root = mountShell(
   "/payments.html",
   "Payments",
   "Upcoming, current, and past mortgage payments.",
   `<button class="btn" id="add-payment-btn" type="button">+ Add Mortgage Payment</button>`
 );
-const user = getUser()!;
-const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 
 root.innerHTML = `
   <section class="panel table-card">
@@ -44,7 +46,7 @@ root.innerHTML = `
           { value: "amount", label: "Amount" }
         ])}
         ${searchFieldHtml()}
-        ${viewToggleHtml(sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list")}
+        ${viewToggleHtml(view)}
       </div>
     </div>
     <div class="status" id="status" hidden></div>
@@ -104,7 +106,6 @@ let views: Views | null = null;
 let activeView: "upcoming" | "current" | "past" = "upcoming";
 let search = "";
 let sortBy = "due";
-let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
 let openMenuId: string | null = null;
 let page = 1;
 const selectedIds = new Set<string>();

@@ -7,11 +7,12 @@ import {
   searchFieldHtml,
   sortFieldHtml,
   viewToggleHtml,
+  storedListView,
   type ListViewMode
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
-const VIEW_KEY = "pf-expenses-view";
+const VIEW_KEY = "pf-expenses-view-v2";
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const ACCEPT =
   ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
@@ -26,7 +27,7 @@ const presetPropertyId = new URLSearchParams(window.location.search).get("proper
 let cache: Array<Record<string, unknown>> = [];
 let search = "";
 let sortBy = "date";
-let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+let view: ListViewMode = storedListView(VIEW_KEY, "list");
 let openMenuId: string | null = null;
 let scope: "property" | "general" = "property";
 let selectedFile: File | null = null;

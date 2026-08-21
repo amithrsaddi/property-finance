@@ -2,6 +2,18 @@ import { apiFile } from "./lib.js";
 
 export type ListViewMode = "list" | "grid";
 
+export function storedListView(key: string, fallback: ListViewMode): ListViewMode {
+  try {
+    const value = sessionStorage.getItem(key);
+    if (value === "list" || value === "grid") {
+      return value;
+    }
+  } catch {
+    /* ignore */
+  }
+  return fallback;
+}
+
 export type ListExtra = {
   header: string;
   title: string;
@@ -334,11 +346,11 @@ export function renderDataList(
                       `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
                   )
                   .join("")
-              : `<td>${cell.summary}</td>`;
+              : `<td class="col-summary">${cell.summary}</td>`;
             return `<tr>
               ${selectable ? `<td class="col-check">${selectCell(row)}</td>` : ""}
-              <td>${cell.name}</td>
-              <td>${cell.status}</td>
+              <td class="col-name">${cell.name}</td>
+              <td class="col-status">${cell.status}</td>
               ${extraTds}
               ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
             </tr>`;

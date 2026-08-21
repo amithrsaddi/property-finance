@@ -7,6 +7,7 @@ import {
   searchFieldHtml,
   sortFieldHtml,
   viewToggleHtml,
+  storedListView,
   type ListViewMode
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
@@ -30,7 +31,7 @@ type MortgageRow = {
   status: string;
 };
 
-const VIEW_KEY = "pf-rates-view";
+const VIEW_KEY = "pf-rates-view-v2";
 const root = mountShell(
   "/rates.html",
   "Rates",
@@ -42,7 +43,7 @@ const presetPropertyId = new URLSearchParams(window.location.search).get("proper
 let cache: MortgageRow[] = [];
 let search = "";
 let sortBy = "name";
-let view: ListViewMode = sessionStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
+let view: ListViewMode = storedListView(VIEW_KEY, "grid");
 let editingId: string | null = null;
 let openMenuId: string | null = null;
 
