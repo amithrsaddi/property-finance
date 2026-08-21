@@ -251,7 +251,8 @@ router.get("/:id/file", async (req: AuthedRequest, res) => {
   res.setHeader("Content-Type", mime);
   res.setHeader("Content-Disposition", `${download ? "attachment" : "inline"}; filename="${filename}"`);
   res.setHeader("Cache-Control", "private, no-store");
-  return res.send(payload);
+  res.setHeader("Content-Length", String(payload.length));
+  return res.end(payload);
 });
 
 router.delete("/:id", async (req: AuthedRequest, res) => {

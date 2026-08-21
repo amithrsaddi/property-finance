@@ -65,7 +65,8 @@ router.get("/:id/image", async (req: AuthedRequest, res) => {
   res.setHeader("Content-Type", mime.startsWith("image/") ? mime : "image/jpeg");
   res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
   res.setHeader("Cache-Control", "private, no-store");
-  return res.send(payload);
+  res.setHeader("Content-Length", String(payload.length));
+  return res.end(payload);
 });
 
 router.post("/", async (req: AuthedRequest, res) => {

@@ -5,6 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  BINARY_CONTENT_TYPES = "image/jpeg,image/jpg,image/png,image/gif,image/webp,application/pdf,application/octet-stream"
 
 [functions]
   node_bundler = "esbuild"

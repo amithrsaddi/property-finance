@@ -3,7 +3,22 @@ import { createApp } from "../../backend/dist/app.js";
 import { connectDb } from "../../backend/dist/db.js";
 
 const app = createApp();
-const handle = serverless(app);
+const handle = serverless(app, {
+  binary: [
+    "application/octet-stream",
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/*"
+  ]
+});
 
 function rewritePath(path: string): string {
   return path.replace(/^\/\.netlify\/functions\/api/, "").replace(/^\/api/, "") || "/";

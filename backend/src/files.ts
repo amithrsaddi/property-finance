@@ -109,5 +109,20 @@ export function fileBuffer(value: unknown): Buffer {
   if (Buffer.isBuffer(value)) {
     return value;
   }
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value);
+  }
+  if (value && typeof value === "object") {
+    const record = value as { buffer?: unknown; data?: unknown };
+    if (Buffer.isBuffer(record.buffer)) {
+      return record.buffer;
+    }
+    if (record.buffer instanceof Uint8Array) {
+      return Buffer.from(record.buffer);
+    }
+    if (Array.isArray(record.data)) {
+      return Buffer.from(record.data as number[]);
+    }
+  }
   return Buffer.from(value as Uint8Array);
 }
