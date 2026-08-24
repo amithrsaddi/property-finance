@@ -110,14 +110,6 @@ function qs(params) {
   const result = search2.toString();
   return result ? `?${result}` : "";
 }
-function formatDateDmY(value) {
-  const raw = String(value || "").trim();
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
-  if (!match) {
-    return raw || "-";
-  }
-  return `${match[3]}-${match[2]}-${match[1]}`;
-}
 
 // src/list-view.ts
 function storedListView(key, fallback) {
@@ -563,12 +555,18 @@ var FOLDER_VIEW_KEY = "pf-documents-folder-view-v2";
 var MAX_FILE_BYTES = 4 * 1024 * 1024;
 var ACCEPT = ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
 var FOLDER_GLYPH = `<svg class="folder-glyph" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M8 18a6 6 0 0 1 6-6h13.2l3.8 5.2H50a6 6 0 0 1 6 6v23.8A6.2 6.2 0 0 1 49.8 53H14.2A6.2 6.2 0 0 1 8 46.8z"/></svg>`;
+var ICON_UPLOAD = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V7M8.5 10 12 6.5 15.5 10"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M6 16.5v2A1.5 1.5 0 0 0 7.5 20h9A1.5 1.5 0 0 0 18 18.5v-2"/></svg>`;
+var ICON_FOLDER_UP = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M3.5 7.5h5.2l1.8 2H20.5v9.2A1.8 1.8 0 0 1 18.7 20.5H5.3A1.8 1.8 0 0 1 3.5 18.7z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 16.2V11M9.8 13 12 10.8 14.2 13"/></svg>`;
+var ICON_TIMELINE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M7 4.5v15"/><circle cx="7" cy="7" r="1.7" fill="currentColor"/><circle cx="7" cy="12" r="1.7" fill="currentColor"/><circle cx="7" cy="17" r="1.7" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M11 7h8M11 12h8M11 17h6"/></svg>`;
+var ICON_EXPLORER = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M3.5 8h5.1l1.7 2H20.5v8.2A1.8 1.8 0 0 1 18.7 20H5.3A1.8 1.8 0 0 1 3.5 18.2z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M3.5 8V6.6A1.6 1.6 0 0 1 5.1 5h4.1l1.5 1.8"/></svg>`;
+var ICON_FOLDER_SM = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M3.5 8h5.1l1.7 2H20.5v8.2A1.8 1.8 0 0 1 18.7 20H5.3A1.8 1.8 0 0 1 3.5 18.2z"/></svg>`;
+var ICON_EMPTY_FILE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M7 3.5h7.2L19.5 9v11.5H7z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M14 3.5V9h5.5M9.5 13h6M9.5 16.5h4"/></svg>`;
 var root = mountShell(
   "/documents",
   "Documents",
   "Organise files in folders, then preview or download them when you need them.",
-  `<button class="btn" id="upload-file-btn" type="button">Upload file</button>
-   <button class="btn" id="upload-folder-btn" type="button">Upload folder</button>`
+  `<button class="btn" id="upload-file-btn" type="button">${ICON_UPLOAD} Upload file</button>
+   <button class="btn secondary" id="upload-folder-btn" type="button">${ICON_FOLDER_UP} Upload folder</button>`
 );
 var presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 var filesCache = [];
@@ -594,10 +592,11 @@ root.innerHTML = `
   <div class="docs-page">
     <div class="docs-toolbar">
       <div class="docs-view-toggle" role="group" aria-label="Page view">
-        <button class="${pageView === "timeline" ? "active" : ""}" data-page-view="timeline" type="button">Timeline view</button>
-        <button class="${pageView === "explorer" ? "active" : ""}" data-page-view="explorer" type="button">Explorer view</button>
+        <button class="${pageView === "timeline" ? "active" : ""}" data-page-view="timeline" type="button">${ICON_TIMELINE} Timeline</button>
+        <button class="${pageView === "explorer" ? "active" : ""}" data-page-view="explorer" type="button">${ICON_EXPLORER} Explorer</button>
       </div>
       <div class="docs-breadcrumb" id="docs-breadcrumb"></div>
+      ${searchFieldHtml("docs-search")}
     </div>
     <div class="status" id="status" hidden></div>
     <div id="docs-body"></div>
@@ -712,10 +711,11 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 function formatDateTable(value) {
-  const raw = String(value || "");
-  const iso = raw.slice(0, 10);
-  const formatted = formatDateDmY(iso);
-  return formatted === "-" ? "-" : formatted.replace(/-/g, " / ");
+  const date = new Date(String(value || ""));
+  if (!Number.isFinite(date.getTime())) {
+    return "\u2014";
+  }
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 function fileKind(mime, filename) {
   const type = `${mime} ${filename}`.toLowerCase();
@@ -739,6 +739,56 @@ function fileKind(mime, filename) {
 function fileExt(filename) {
   const match = /\.[a-z0-9]+$/i.exec(String(filename || ""));
   return match ? match[0].toLowerCase() : "";
+}
+function kindSlug(kind) {
+  return String(kind || "file").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+function fileBadgeLabel(kind, filename = "") {
+  if (kind === "PDF") {
+    return "PDF";
+  }
+  if (kind === "Word") {
+    return "DOC";
+  }
+  if (kind === "Excel") {
+    return "XLS";
+  }
+  if (kind === "Image") {
+    return "IMG";
+  }
+  if (kind === "Text") {
+    return fileExt(filename) === ".csv" ? "CSV" : "TXT";
+  }
+  if (kind === "Folder") {
+    return ICON_FOLDER_SM;
+  }
+  const ext = fileExt(filename).replace(".", "");
+  return (ext || "FILE").slice(0, 4).toUpperCase();
+}
+function fileBadge(kind, filename = "") {
+  return `<span class="file-badge kind-${kindSlug(kind)}">${fileBadgeLabel(kind, filename)}</span>`;
+}
+function typeChip(kind) {
+  return `<span class="docs-type-chip kind-${kindSlug(kind)}">${escapeHtml(kind)}</span>`;
+}
+function folderChip(name, folderId = "") {
+  const label = `<span>${ICON_FOLDER_SM}${escapeHtml(name)}</span>`;
+  if (!folderId) {
+    return `<span class="docs-folder-chip is-static">${label}</span>`;
+  }
+  return `<button class="docs-folder-chip" type="button" data-open-folder="${escapeHtml(folderId)}">${label}</button>`;
+}
+function typeLabel(kind, filename = "") {
+  if (kind === "Text" && fileExt(filename) === ".csv") {
+    return "CSV";
+  }
+  return kind;
+}
+function fileSubtitle(row) {
+  const filename = String(row.original_filename || "");
+  const ext = fileExt(filename);
+  const size = formatBytes(Number(row.file_size || 0));
+  return [ext || fileKind(String(row.mime_type || ""), filename), size].filter(Boolean).join(" \xB7 ");
 }
 function padCount(value) {
   return String(value).padStart(2, "0");
@@ -1012,10 +1062,11 @@ function renderBreadcrumb() {
   const el = document.getElementById("docs-breadcrumb");
   el.innerHTML = breadcrumb().map((item, index, all) => {
     const last = index === all.length - 1;
+    const sep = index ? `<span class="docs-crumb-sep" aria-hidden="true">/</span>` : "";
     if (last) {
-      return `<button type="button" disabled>${escapeHtml(item.name)}</button>`;
+      return `${sep}<span class="docs-crumb-current">${escapeHtml(item.name)}</span>`;
     }
-    return `<button type="button" data-crumb="${escapeHtml(item.id || "")}">${escapeHtml(item.name)}</button><span>/</span>`;
+    return `${sep}<button type="button" data-crumb="${escapeHtml(item.id || "")}">${escapeHtml(item.name)}</button>`;
   }).join("");
   el.querySelectorAll("[data-crumb]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1043,7 +1094,13 @@ function renderFolders() {
   const body = !folders.length ? `<p class="docs-empty">No folders here yet. Use + to create one.</p>` : folderView === "list" ? `<div class="folder-list">${folders.map(
     (folder) => `<article class="folder-row" data-open-folder="${escapeHtml(String(folder.id))}">
               ${FOLDER_GLYPH}
-              <div><strong>${escapeHtml(String(folder.name))}</strong><div><span>${padCount(Number(folder.file_count || 0))} Files | ${padCount(Number(folder.folder_count || 0))} Folders</span></div></div>
+              <div>
+                <strong>${escapeHtml(String(folder.name))}</strong>
+                <div class="folder-counts">
+                  <span>${padCount(Number(folder.file_count || 0))} files</span>
+                  <span>${padCount(Number(folder.folder_count || 0))} folders</span>
+                </div>
+              </div>
               ${folderMenu(folder)}
             </article>`
   ).join("")}</div>` : `<div class="folder-grid">${folders.map(
@@ -1051,14 +1108,17 @@ function renderFolders() {
               ${folderMenu(folder)}
               ${FOLDER_GLYPH}
               <strong>${escapeHtml(String(folder.name))}</strong>
-              <span>${padCount(Number(folder.file_count || 0))} Files | ${padCount(Number(folder.folder_count || 0))} Folders</span>
+              <div class="folder-counts">
+                <span>${padCount(Number(folder.file_count || 0))} files</span>
+                <span>${padCount(Number(folder.folder_count || 0))} folders</span>
+              </div>
             </article>`
   ).join("")}</div>`;
   return `<section class="docs-section">
     <div class="docs-section-head">
       <div>
-        <h2>Your folders | ${count} Folder${count === 1 ? "" : "s"}</h2>
-        <p>Click on a folder to view the files / subfolders inside.</p>
+        <h2>Your folders <span class="docs-count">${count}</span></h2>
+        <p>Open a folder to see the files and subfolders inside.</p>
       </div>
       <div class="docs-section-tools">${tools}</div>
     </div>
@@ -1073,94 +1133,141 @@ function fileActions(row) {
     <button type="button" data-move="${escapeHtml(id)}">Move to folder</button>
     <button type="button" data-preview="${escapeHtml(id)}">Preview document</button>`;
 }
-function renderFileTable(rows, includeFolders = false) {
-  const folders = includeFolders ? visibleFolders() : [];
-  if (!rows.length && !folders.length) {
-    return `<p class="docs-empty">No files yet. Use Upload file to add one.</p>`;
-  }
-  const folderRows = folders.map((folder) => {
-    const id = String(folder.id);
-    return `<tr>
-        <td class="col-check"></td>
-        <td><button class="docs-file-name" type="button" data-open-folder="${escapeHtml(id)}">${escapeHtml(String(folder.name))}</button></td>
-        <td>${currentFolderId ? escapeHtml(String(folderById(currentFolderId)?.name || "Folder")) : "Documents"}</td>
-        <td>Folder</td>
-        <td>${formatDateTable(folder.updated_at || folder.created_at)}</td>
-        <td class="col-actions">${folderMenu(folder)}</td>
-      </tr>`;
-  }).join("");
-  const fileRows = rows.map((row) => {
-    const id = String(row.id);
-    const ext = fileExt(String(row.original_filename || "")) || fileKind(String(row.mime_type || ""), String(row.original_filename || ""));
-    const folderName = String(row.folder_name || "Unfiled");
-    const folderId = String(row.folder_id || "");
-    return `<tr>
-        <td class="col-check"><input type="checkbox" data-select="${escapeHtml(id)}"${selectedIds.has(id) ? " checked" : ""} /></td>
-        <td><button class="docs-file-name" type="button" data-preview="${escapeHtml(id)}">${escapeHtml(String(row.name || "File"))}</button></td>
-        <td>${folderId ? `<button class="docs-link" type="button" data-open-folder="${escapeHtml(folderId)}">${escapeHtml(folderName)}</button>` : "Unfiled"}</td>
-        <td>${escapeHtml(ext)}</td>
-        <td>${formatDateTable(row.updated_at || row.created_at)}</td>
-        <td class="col-actions">${kebabMenu(`file:${id}`, openMenuId === `file:${id}`, fileActions(row))}</td>
-      </tr>`;
-  }).join("");
-  return `<div class="docs-table-wrap"><table class="docs-table">
-    <thead>
-      <tr>
-        <th class="col-check"><input type="checkbox" id="select-all"${rows.length && rows.every((row) => selectedIds.has(String(row.id))) ? " checked" : ""} /></th>
-        <th>File name</th>
-        <th>Location (Folder)</th>
-        <th>File type</th>
-        <th>Modified</th>
-        <th class="col-actions">Action</th>
-      </tr>
-    </thead>
-    <tbody>${folderRows}${fileRows}</tbody>
-  </table></div>`;
+function renderEmptyDocs(title, copy, actionLabel = "") {
+  const action = actionLabel ? `<button class="btn" id="empty-upload-btn" type="button">${ICON_UPLOAD} ${escapeHtml(actionLabel)}</button>` : "";
+  return `<div class="docs-empty-card">
+    <div class="docs-empty-icon">${ICON_EMPTY_FILE}</div>
+    <h3>${escapeHtml(title)}</h3>
+    <p>${escapeHtml(copy)}</p>
+    ${action}
+  </div>`;
 }
-function renderFiles() {
-  const rows = filesInScope();
-  const allCount = currentFolderId ? filesCache.filter((row) => String(row.folder_id || "") === currentFolderId).length : filesCache.length;
+function renderFileFilters() {
   const locationSelect = currentFolderId ? "" : `<label class="sr-only" for="filter-location">Location</label>
         <select id="filter-location">
-          <option value="">Location</option>
+          <option value="">All locations</option>
           <option value="unfiled"${locationFilter === "unfiled" ? " selected" : ""}>Unfiled</option>
           ${foldersCache.map((folder) => {
     const id = String(folder.id);
     return `<option value="${escapeHtml(id)}"${locationFilter === id ? " selected" : ""}>${escapeHtml(folderPath(id))}</option>`;
   }).join("")}
         </select>`;
-  const bulk = selectedIds.size ? `<div class="docs-bulk">
-        ${selectedIds.size} selected
+  return `<div class="docs-filters">
+      ${locationSelect}
+      <label class="sr-only" for="filter-type">File type</label>
+      <select id="filter-type">
+        <option value="">All types</option>
+        ${["PDF", "Image", "Word", "Excel", "Text"].map((kind) => `<option${typeFilter === kind ? " selected" : ""}>${kind}</option>`).join("")}
+      </select>
+      <label class="sr-only" for="filter-modified">Modified</label>
+      <select id="filter-modified">
+        <option value="">Any time</option>
+        <option value="7"${modifiedFilter === "7" ? " selected" : ""}>Last 7 days</option>
+        <option value="30"${modifiedFilter === "30" ? " selected" : ""}>Last 30 days</option>
+        <option value="90"${modifiedFilter === "90" ? " selected" : ""}>Last 90 days</option>
+        <option value="year"${modifiedFilter === "year" ? " selected" : ""}>This year</option>
+      </select>
+    </div>`;
+}
+function renderBulkBar() {
+  if (!selectedIds.size) {
+    return "";
+  }
+  return `<div class="docs-bulk">
+        <span>${selectedIds.size} selected</span>
         <button class="btn secondary" id="bulk-move" type="button">Move to folder</button>
         <button class="btn danger" id="bulk-delete" type="button">Delete</button>
         <button class="btn ghost" id="bulk-clear" type="button">Clear</button>
-      </div>` : "";
+      </div>`;
+}
+function renderFolderRow(folder) {
+  const id = String(folder.id);
+  const parentName = currentFolderId ? String(folderById(currentFolderId)?.name || "Folder") : "Documents";
+  return `<article class="docs-file-row is-folder">
+      <span class="docs-check"></span>
+      <div class="name-cell docs-name-cell">
+        ${fileBadge("Folder")}
+        <div>
+          <button class="docs-file-name" type="button" data-open-folder="${escapeHtml(id)}">${escapeHtml(String(folder.name))}</button>
+          <div class="name-sub">${padCount(Number(folder.file_count || 0))} files \xB7 ${padCount(Number(folder.folder_count || 0))} folders</div>
+        </div>
+      </div>
+      <div class="docs-col-location" data-label="Location">${folderChip(parentName, currentFolderId || "")}</div>
+      <div class="docs-col-type" data-label="Type">${typeChip("Folder")}</div>
+      <time class="docs-col-modified" data-label="Modified">${formatDateTable(folder.updated_at || folder.created_at)}</time>
+      <div class="col-actions">${folderMenu(folder)}</div>
+    </article>`;
+}
+function renderFileRow(row) {
+  const id = String(row.id);
+  const filename = String(row.original_filename || "");
+  const kind = fileKind(String(row.mime_type || ""), filename);
+  const folderName = String(row.folder_name || "Unfiled");
+  const folderId = String(row.folder_id || "");
+  const important = row.important ? `<span class="docs-star" title="Important">\u2605</span>` : "";
+  return `<article class="docs-file-row">
+      <label class="docs-check">
+        <span class="sr-only">Select ${escapeHtml(String(row.name || "file"))}</span>
+        <input type="checkbox" data-select="${escapeHtml(id)}"${selectedIds.has(id) ? " checked" : ""} />
+      </label>
+      <div class="name-cell docs-name-cell">
+        ${fileBadge(typeLabel(kind, filename), filename)}
+        <div>
+          <button class="docs-file-name" type="button" data-preview="${escapeHtml(id)}">${escapeHtml(String(row.name || "File"))}${important}</button>
+          <div class="name-sub">${escapeHtml(fileSubtitle(row))}</div>
+        </div>
+      </div>
+      <div class="docs-col-location" data-label="Location">${folderChip(folderName, folderId)}</div>
+      <div class="docs-col-type" data-label="Type">${typeChip(typeLabel(kind, filename))}</div>
+      <time class="docs-col-modified" data-label="Modified">${formatDateTable(row.updated_at || row.created_at)}</time>
+      <div class="col-actions">${kebabMenu(`file:${id}`, openMenuId === `file:${id}`, fileActions(row))}</div>
+    </article>`;
+}
+function renderFileHead(rows) {
+  const allChecked = Boolean(rows.length && rows.every((row) => selectedIds.has(String(row.id))));
+  return `<div class="docs-file-head">
+      <label class="docs-check">
+        <span class="sr-only">Select all</span>
+        <input type="checkbox" id="select-all"${allChecked ? " checked" : ""} />
+      </label>
+      <span>Name</span>
+      <span>Location</span>
+      <span>Type</span>
+      <span>Modified</span>
+      <span class="col-actions">Action</span>
+    </div>`;
+}
+function renderFileList(rows, includeFolders = false) {
+  const folders = includeFolders ? visibleFolders() : [];
+  if (!rows.length && !folders.length) {
+    return "";
+  }
+  return `<div class="docs-file-list">
+    ${renderFileHead(rows)}
+    ${folders.map(renderFolderRow).join("")}
+    ${rows.map(renderFileRow).join("")}
+  </div>`;
+}
+function renderFiles() {
+  const rows = filesInScope();
+  const folders = fileTab === "mixed" ? visibleFolders() : [];
+  const allCount = currentFolderId ? filesCache.filter((row) => String(row.folder_id || "") === currentFolderId).length : filesCache.length;
+  const list = renderFileList(rows, fileTab === "mixed");
+  const empty = !rows.length && !folders.length ? renderEmptyDocs(
+    filesCache.length ? "No files match" : "No files yet",
+    filesCache.length ? "Try a different search or filter." : "Upload a file to start organising this folder.",
+    filesCache.length ? "" : "Upload file"
+  ) : "";
   return `<section class="docs-section">
     <div class="docs-section-head">
       <div>
-        <h2>Your files | ${allCount} File${allCount === 1 ? "" : "s"}</h2>
-        <p>Click on a file to preview the file.</p>
+        <h2>Your files <span class="docs-count">${allCount}</span></h2>
+        <p>Click a file to preview it.</p>
       </div>
       <div class="docs-section-tools"><button class="plus-btn" id="add-file-btn" type="button" aria-label="Upload file">+</button></div>
     </div>
     <div class="docs-file-toolbar">
-      <div class="docs-filters">
-        ${locationSelect}
-        <label class="sr-only" for="filter-type">File type</label>
-        <select id="filter-type">
-          <option value="">File type</option>
-          ${["PDF", "Image", "Word", "Excel", "Text"].map((kind) => `<option${typeFilter === kind ? " selected" : ""}>${kind}</option>`).join("")}
-        </select>
-        <label class="sr-only" for="filter-modified">Modified</label>
-        <select id="filter-modified">
-          <option value="">Modified</option>
-          <option value="7"${modifiedFilter === "7" ? " selected" : ""}>Last 7 days</option>
-          <option value="30"${modifiedFilter === "30" ? " selected" : ""}>Last 30 days</option>
-          <option value="90"${modifiedFilter === "90" ? " selected" : ""}>Last 90 days</option>
-          <option value="year"${modifiedFilter === "year" ? " selected" : ""}>This year</option>
-        </select>
-      </div>
-      ${searchFieldHtml("docs-search")}
+      ${renderFileFilters()}
     </div>
     <div class="docs-tabs">
       <button class="docs-tab${fileTab === "all" ? " active" : ""}" data-file-tab="all" type="button">All files</button>
@@ -1168,8 +1275,8 @@ function renderFiles() {
       <button class="docs-tab${fileTab === "important" ? " active" : ""}" data-file-tab="important" type="button">Important</button>
       <button class="docs-tab${fileTab === "recent" ? " active" : ""}" data-file-tab="recent" type="button">Recent</button>
     </div>
-    ${bulk}
-    ${renderFileTable(rows, fileTab === "mixed")}
+    ${renderBulkBar()}
+    ${list || empty}
   </section>`;
 }
 function monthLabel(value) {
@@ -1183,9 +1290,6 @@ function renderTimeline() {
   const rows = [...filesInScope()].sort(
     (a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || ""))
   );
-  if (!rows.length) {
-    return `<section class="docs-section"><p class="docs-empty">No files to show on the timeline.</p></section>`;
-  }
   const groups = /* @__PURE__ */ new Map();
   for (const row of rows) {
     const key = monthLabel(row.updated_at || row.created_at);
@@ -1193,12 +1297,26 @@ function renderTimeline() {
     list.push(row);
     groups.set(key, list);
   }
-  return `<section class="docs-section"><div class="docs-timeline">${[...groups.entries()].map(
-    ([label, items]) => `<div class="docs-timeline-group">
-        <h3>${escapeHtml(label)}</h3>
-        ${renderFileTable(items)}
-      </div>`
-  ).join("")}</div></section>`;
+  const body = !rows.length ? renderEmptyDocs(
+    filesCache.length ? "No files match" : "No files yet",
+    filesCache.length ? "Try a different search or filter." : "Upload a file to see it on the timeline.",
+    filesCache.length ? "" : "Upload file"
+  ) : `<div class="docs-file-list">
+        ${renderFileHead(rows)}
+        ${[...groups.entries()].map(
+    ([label, items]) => `<div class="docs-month">
+              <h3><span class="docs-month-dot" aria-hidden="true"></span>${escapeHtml(label)} <span>${items.length} file${items.length === 1 ? "" : "s"}</span></h3>
+              ${items.map(renderFileRow).join("")}
+            </div>`
+  ).join("")}
+      </div>`;
+  return `<section class="docs-section docs-timeline-panel">
+    <div class="docs-file-toolbar">
+      ${renderFileFilters()}
+    </div>
+    ${renderBulkBar()}
+    ${body}
+  </section>`;
 }
 function bindPage() {
   const body = document.getElementById("docs-body");
@@ -1235,6 +1353,9 @@ function bindPage() {
     setFileHint("PDF, image, Word, or Excel \xB7 up to 4 MB");
     openDocumentModal("Upload file");
   });
+  document.getElementById("empty-upload-btn")?.addEventListener("click", () => {
+    document.getElementById("upload-file-btn")?.click();
+  });
   body.querySelectorAll("[data-view-mode]").forEach((button) => {
     button.addEventListener("click", () => {
       folderView = button.dataset.viewMode === "list" ? "list" : "grid";
@@ -1249,14 +1370,6 @@ function bindPage() {
       render();
     });
   });
-  document.getElementById("docs-search")?.addEventListener("input", (event) => {
-    search = event.target.value;
-    render();
-  });
-  const searchInput = document.getElementById("docs-search");
-  if (searchInput) {
-    searchInput.value = search;
-  }
   document.getElementById("filter-location")?.addEventListener("change", (event) => {
     locationFilter = event.target.value;
     render();
@@ -1657,6 +1770,10 @@ previewModal.addEventListener("click", (event) => {
   if (event.target === previewModal) {
     closePreview();
   }
+});
+document.getElementById("docs-search")?.addEventListener("input", (event) => {
+  search = event.target.value;
+  render();
 });
 document.querySelectorAll("[data-page-view]").forEach((button) => {
   button.addEventListener("click", () => {
