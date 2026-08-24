@@ -19,7 +19,7 @@ const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 let view: ListViewMode = storedListView(VIEW_KEY, "list");
 const root = mountShell(
-  "/payments.html",
+  "/payments",
   "Payments",
   "Upcoming, current, and past mortgage payments.",
   `<button class="btn" id="add-payment-btn" type="button">+ Add Mortgage Payment</button>`
@@ -368,7 +368,7 @@ function render(): void {
         id,
         title: String(r.property_name || "Property"),
         subtitle: "",
-        href: r.property_id ? `/property.html?id=${r.property_id}` : undefined,
+        href: r.property_id ? `/property?id=${r.property_id}` : undefined,
         propertyId: r.property_id ? String(r.property_id) : undefined,
         hasImage: Boolean(r.hasImage),
         status,

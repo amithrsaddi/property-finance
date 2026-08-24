@@ -2691,6 +2691,63 @@ html.dark .switch-ui::after {
   margin-bottom: 1rem;
 }
 
+.backup-board {
+  display: grid;
+  gap: 1rem;
+  max-width: 46rem;
+}
+
+.backup-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem 1.3rem 1.2rem;
+}
+
+.backup-card-icon {
+  width: 1.55rem;
+  height: 1.55rem;
+  color: var(--brand);
+  margin-bottom: 0.7rem;
+}
+
+.backup-card h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.backup-card p {
+  margin: 0 0 1.05rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  max-width: 38rem;
+}
+
+.backup-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.backup-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.backup-btn .btn-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.btn.ghost.backup-btn:hover {
+  background: hsl(var(--secondary));
+}
+
 .year-select {
   display: flex;
   align-items: center;

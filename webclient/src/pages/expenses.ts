@@ -17,7 +17,7 @@ const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const ACCEPT =
   ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
 const root = mountShell(
-  "/expenses.html",
+  "/expenses",
   "Expenses",
   "Property expenses and portfolio-level additional costs.",
   `<button class="btn" id="add-expense-btn" type="button">+ Add Expense</button>`
@@ -254,7 +254,7 @@ function renderList(): void {
         id,
         title: String(e.category || "Expense"),
         subtitle: e.description ? `${place} · ${e.description}` : place,
-        href: scope === "property" && e.property_id ? `/property.html?id=${e.property_id}` : undefined,
+        href: scope === "property" && e.property_id ? `/property?id=${e.property_id}` : undefined,
         propertyId: e.property_id ? String(e.property_id) : undefined,
         hasImage: Boolean(e.hasImage),
         status,

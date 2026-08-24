@@ -5,9 +5,9 @@
   "scripts": {
     "build": "esbuild src/pages/*.ts --bundle --platform=browser --format=esm --outdir=public/pages",
     "dev:build": "npm run build -- --watch",
-    "dev:serve": "http-server public -p 5173 -c-1",
+    "dev:serve": "http-server public -p 5173 -c-1 -e html",
     "dev": "concurrently \"npm run dev:build\" \"npm run dev:serve\"",
-    "start": "http-server public -p 5173 -c-1",
+    "start": "http-server public -p 5173 -c-1 -e html",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

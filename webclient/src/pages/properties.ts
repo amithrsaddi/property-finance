@@ -16,7 +16,7 @@ const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,
 const user = getUser()!;
 
 const root = mountShell(
-  "/properties.html",
+  "/properties",
   "Properties",
   "Manage your property portfolio.",
   `<button class="btn" id="add-property-btn" type="button">+ Add Property</button>`
@@ -308,7 +308,7 @@ function nameCell(row: Record<string, unknown>): string {
   return `<div class="name-cell">
     ${propertyThumbHtml(id, Boolean(row.hasImage))}
     <div>
-      <a class="name-title" href="/property.html?id=${escapeHtml(id)}">${escapeHtml(name)}</a>
+      <a class="name-title" href="/property?id=${escapeHtml(id)}">${escapeHtml(name)}</a>
       <div class="name-sub">${escapeHtml(row.address || "No address")}</div>
     </div>
   </div>`;
@@ -331,7 +331,7 @@ function actionMenu(row: Record<string, unknown>): string {
   return `<div class="row-menu ${open ? "open" : ""}">
     <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">⋯</button>
     <div class="row-menu-pop"${open ? "" : " hidden"}>
-      <a href="/property.html?id=${escapeHtml(id)}">Open</a>
+      <a href="/property?id=${escapeHtml(id)}">Open</a>
       <button type="button" data-edit="${escapeHtml(id)}">Edit</button>
       ${
         archived

@@ -15,3 +15,73 @@
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
+
+[[redirects]]
+  from = "/dashboard"
+  to = "/dashboard.html"
+  status = 200
+
+[[redirects]]
+  from = "/properties"
+  to = "/properties.html"
+  status = 200
+
+[[redirects]]
+  from = "/property"
+  to = "/property.html"
+  status = 200
+
+[[redirects]]
+  from = "/rent"
+  to = "/rent.html"
+  status = 200
+
+[[redirects]]
+  from = "/payments"
+  to = "/payments.html"
+  status = 200
+
+[[redirects]]
+  from = "/rates"
+  to = "/rates.html"
+  status = 200
+
+[[redirects]]
+  from = "/expenses"
+  to = "/expenses.html"
+  status = 200
+
+[[redirects]]
+  from = "/documents"
+  to = "/documents.html"
+  status = 200
+
+[[redirects]]
+  from = "/reports"
+  to = "/reports.html"
+  status = 200
+
+[[redirects]]
+  from = "/settings"
+  to = "/settings.html"
+  status = 200
+
+[[redirects]]
+  from = "/backup"
+  to = "/backup.html"
+  status = 200
+
+[[redirects]]
+  from = "/profile"
+  to = "/profile.html"
+  status = 200
+
+[[redirects]]
+  from = "/mortgages"
+  to = "/mortgages.html"
+  status = 200
+
+[[redirects]]
+  from = "/reset-password"
+  to = "/reset-password.html"
+  status = 200

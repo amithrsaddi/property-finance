@@ -2,7 +2,7 @@ import { api, clearSession, getToken, setSession, type AuthUser } from "../lib.j
 import { setStatus } from "../shell.js";
 
 if (getToken()) {
-  window.location.href = "/dashboard.html";
+  window.location.href = "/dashboard";
 }
 
 const panels = document.querySelectorAll<HTMLElement>(".form-panel");
@@ -43,7 +43,7 @@ signInForm?.addEventListener("submit", async (event) => {
     });
     setSession(result.token, result.user);
     setStatus(authStatus, result.message, "success");
-    window.location.href = "/dashboard.html";
+    window.location.href = "/dashboard";
   } catch (error) {
     setStatus(authStatus, (error as Error).message, "error");
   }
@@ -64,7 +64,7 @@ registerForm?.addEventListener("submit", async (event) => {
     });
     setSession(result.token, result.user);
     setStatus(authStatus, result.message, "success");
-    window.location.href = "/dashboard.html";
+    window.location.href = "/dashboard";
   } catch (error) {
     setStatus(authStatus, (error as Error).message, "error");
   }

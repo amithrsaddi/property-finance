@@ -2,9 +2,11 @@ import { api, getUser, money, qs } from "../lib.js";
 import { mountShell, setStatus } from "../shell.js";
 
 if (location.hash === "#settings") {
-  window.location.replace("/settings.html");
+  window.location.replace("/settings");
+} else if (location.hash === "#backup") {
+  window.location.replace("/backup");
 } else if (location.hash === "#profile") {
-  window.location.replace("/profile.html");
+  window.location.replace("/profile");
 }
 
 const nowYear = new Date().getFullYear();
@@ -21,7 +23,7 @@ function readPortfolio(): PortfolioScope {
 const initialPortfolio = readPortfolio();
 
 const root = mountShell(
-  "/dashboard.html",
+  "/dashboard",
   `Financial overview ${nowYear}`,
   "Overview of income and expenses",
   `<label class="year-select"><span>Properties</span>

@@ -10,6 +10,7 @@ import documentRoutes from "./routes/documents.js";
 import folderRoutes from "./routes/folders.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import reportRoutes from "./routes/reports.js";
+import backupRoutes from "./routes/backup.js";
 
 function corsOrigin(): CorsOptions["origin"] {
   const raw = process.env.WEBCLIENT_ORIGIN;
@@ -46,7 +47,7 @@ function parseServerlessBody(req: express.Request, _res: express.Response, next:
 export function createApp(): express.Express {
   const app = express();
   app.use(parseServerlessBody);
-  app.use(express.json({ limit: "6mb" }));
+  app.use(express.json({ limit: "32mb" }));
   app.use(
     cors({
       origin: corsOrigin(),
@@ -68,6 +69,7 @@ export function createApp(): express.Express {
   app.use("/documents", documentRoutes);
   app.use("/dashboard", dashboardRoutes);
   app.use("/reports", reportRoutes);
+  app.use("/backup", backupRoutes);
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err);

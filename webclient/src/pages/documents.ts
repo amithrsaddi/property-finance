@@ -23,7 +23,7 @@ type FileTab = "all" | "mixed" | "important" | "recent";
 type DocRow = Record<string, unknown>;
 
 const root = mountShell(
-  "/documents.html",
+  "/documents",
   "Documents",
   "Organise files in folders, then preview or download them when you need them.",
   `<button class="btn" id="upload-file-btn" type="button">Upload file</button>

@@ -1,2 +1,2 @@
 const params = window.location.search;
-window.location.replace(`/payments.html${params}`);
+window.location.replace(`/payments${params}`);

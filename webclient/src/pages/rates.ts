@@ -35,7 +35,7 @@ const VIEW_KEY = "pf-rates-view-v2";
 const MOBILE_VIEW = window.matchMedia("(max-width: 900px)");
 const viewKey = () => (MOBILE_VIEW.matches ? `${VIEW_KEY}-m` : VIEW_KEY);
 const root = mountShell(
-  "/rates.html",
+  "/rates",
   "Rates",
   "Interest rates and fixed-rate expiry for your mortgages.",
   `<button class="btn" id="add-mortgage-btn" type="button">+ Add Mortgage</button>`
@@ -223,7 +223,7 @@ function renderRates(): void {
       id: String(m.id),
       title: String(m.property_name || "Property"),
       subtitle: String(m.lender || "Lender"),
-      href: m.property_id ? `/property.html?id=${m.property_id}` : undefined,
+      href: m.property_id ? `/property?id=${m.property_id}` : undefined,
       propertyId: m.property_id ? String(m.property_id) : undefined,
       hasImage: Boolean(m.hasImage),
       status: m.status === "archived" ? "archived" : String(m.mortgage_type || "repayment"),

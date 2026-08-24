@@ -111,6 +111,9 @@ function icon(path, className = "nav-icon") {
 var ICON_COG = icon(
   '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 3.5v2.2M12 18.3v2.2M4.8 6.5l1.6 1.6M17.6 15.9l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.8 17.5l1.6-1.6M17.6 8.1l1.6-1.6"/>'
 );
+var ICON_BACKUP = icon(
+  '<rect x="4" y="4.5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 9.5h16M8 4.5v-1M16 4.5v-1M8 13h3M8 16.5h8"/>'
+);
 var ICON_MOON = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M20 14.5A8.5 8.5 0 1 1 9.5 4 6.8 6.8 0 0 0 20 14.5z"/>'
 );
@@ -156,24 +159,35 @@ var ICON_EXPENSES = icon(
 var ICON_REPORTS = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M6 19v-6M12 19V6M18 19v-9"/>'
 );
+function pagePath(path) {
+  const clean = String(path || "").split("?")[0].split("#")[0];
+  if (clean.endsWith(".html")) {
+    return clean.slice(0, -5) || "/";
+  }
+  return clean || "/";
+}
+function isActivePath(href, activePath) {
+  return pagePath(href) === pagePath(activePath);
+}
 var NAV = [
-  { href: "/dashboard.html", label: "Dashboard", icon: ICON_DASHBOARD },
-  { href: "/properties.html", label: "Properties", icon: ICON_PROPERTIES },
-  { href: "/rent.html", label: "Rent", icon: ICON_RENT },
+  { href: "/dashboard", label: "Dashboard", icon: ICON_DASHBOARD },
+  { href: "/properties", label: "Properties", icon: ICON_PROPERTIES },
+  { href: "/rent", label: "Rent", icon: ICON_RENT },
   {
     label: "Mortgages",
     icon: ICON_MORTGAGES,
     children: [
-      { href: "/payments.html", label: "Payments", icon: ICON_PAYMENTS },
-      { href: "/rates.html", label: "Rates", icon: ICON_RATES }
+      { href: "/payments", label: "Payments", icon: ICON_PAYMENTS },
+      { href: "/rates", label: "Rates", icon: ICON_RATES }
     ]
   },
-  { href: "/expenses.html", label: "Expenses", icon: ICON_EXPENSES },
-  { href: "/documents.html", label: "Documents", icon: ICON_DOCUMENTS },
-  { href: "/reports.html", label: "Reports", icon: ICON_REPORTS }
+  { href: "/expenses", label: "Expenses", icon: ICON_EXPENSES },
+  { href: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
+  { href: "/reports", label: "Reports", icon: ICON_REPORTS }
 ];
 function isMortgagesPath(path) {
-  return path === "/payments.html" || path === "/rates.html";
+  const current = pagePath(path);
+  return current === "/payments" || current === "/rates";
 }
 function mortgagesNavOpen(activePath) {
   if (isMortgagesPath(activePath)) {
@@ -188,7 +202,7 @@ function mortgagesNavOpen(activePath) {
 function renderNav(activePath) {
   return NAV.map((item) => {
     if (item.children?.length) {
-      const childActive = item.children.some((child) => child.href === activePath);
+      const childActive = item.children.some((child) => isActivePath(child.href, activePath));
       const open = mortgagesNavOpen(activePath);
       return `<div class="nav-group${open ? " open" : ""}">
         <button class="nav-group-toggle${childActive ? " active" : ""}" id="mortgages-nav-toggle" type="button" aria-expanded="${open}" aria-controls="mortgages-nav-sub">
@@ -197,12 +211,12 @@ function renderNav(activePath) {
         </button>
         <div class="nav-sub" id="mortgages-nav-sub"${open ? "" : " hidden"}>
           ${item.children.map(
-        (child) => `<a href="${child.href}" class="${child.href === activePath ? "active" : ""}">${child.icon}${child.label}</a>`
+        (child) => `<a href="${child.href}" class="${isActivePath(child.href, activePath) ? "active" : ""}">${child.icon}${child.label}</a>`
       ).join("")}
         </div>
       </div>`;
     }
-    return `<a href="${item.href}" class="${item.href === activePath ? "active" : ""}">${item.icon}${item.label}</a>`;
+    return `<a href="${item.href}" class="${isActivePath(item.href || "", activePath) ? "active" : ""}">${item.icon}${item.label}</a>`;
   }).join("");
 }
 function mountShell(activePath, title, subtitle = "", actionsHtml = "") {
@@ -224,8 +238,11 @@ function mountShell(activePath, title, subtitle = "", actionsHtml = "") {
           <div class="sidebar-system">
             <div class="sidebar-options-label">System</div>
             <nav class="nav">
-              <a href="/settings.html" class="${activePath === "/settings.html" ? "active" : ""}">
+              <a href="/settings" class="${isActivePath("/settings", activePath) ? "active" : ""}">
                 ${ICON_COG}Settings
+              </a>
+              <a href="/backup" class="${isActivePath("/backup", activePath) ? "active" : ""}">
+                ${ICON_BACKUP}Backup & Restore
               </a>
               <button class="theme-option" id="theme-toggle" type="button" role="switch" aria-checked="false">
                 <span class="theme-option-label">${ICON_MOON}Dark mode</span>
@@ -237,7 +254,7 @@ function mountShell(activePath, title, subtitle = "", actionsHtml = "") {
               </button>
             </nav>
           </div>
-          <a href="/profile.html" class="sidebar-profile${activePath === "/profile.html" ? " active" : ""}">
+          <a href="/profile" class="sidebar-profile${isActivePath("/profile", activePath) ? " active" : ""}">
             <span class="profile-avatar">${ICON_USER}</span>
             <span class="sidebar-profile-name">${user2.name}</span>
           </a>
@@ -400,7 +417,7 @@ function setStatus(el, message, type = "info") {
 
 // src/pages/profile.ts
 var user = getUser();
-var root = mountShell("/profile.html", "Profile", "Account details");
+var root = mountShell("/profile", "Profile", "Account details");
 root.innerHTML = `
   <section class="panel account-panel">
     <div class="profile-overview" id="profile-overview">

@@ -100,7 +100,7 @@ router.post("/forgot-password", async (req, res) => {
   });
 
   const origin = process.env.WEBCLIENT_ORIGIN || process.env.URL || "http://localhost:5173";
-  const resetUrl = `${origin}/reset-password.html?token=${token}`;
+  const resetUrl = `${origin}/reset-password?token=${token}`;
   console.log(`[password-reset] ${user.email}: ${resetUrl}`);
 
   return res.json({

@@ -56,6 +56,9 @@ function icon(path, className = "nav-icon") {
 var ICON_COG = icon(
   '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 3.5v2.2M12 18.3v2.2M4.8 6.5l1.6 1.6M17.6 15.9l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.8 17.5l1.6-1.6M17.6 8.1l1.6-1.6"/>'
 );
+var ICON_BACKUP = icon(
+  '<rect x="4" y="4.5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 9.5h16M8 4.5v-1M16 4.5v-1M8 13h3M8 16.5h8"/>'
+);
 var ICON_MOON = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M20 14.5A8.5 8.5 0 1 1 9.5 4 6.8 6.8 0 0 0 20 14.5z"/>'
 );
@@ -112,7 +115,7 @@ function setStatus(el, message, type = "info") {
 
 // src/pages/auth.ts
 if (getToken()) {
-  window.location.href = "/dashboard.html";
+  window.location.href = "/dashboard";
 }
 var panels = document.querySelectorAll(".form-panel");
 var signInForm = document.getElementById("signin-form");
@@ -149,7 +152,7 @@ signInForm?.addEventListener("submit", async (event) => {
     });
     setSession(result.token, result.user);
     setStatus(authStatus, result.message, "success");
-    window.location.href = "/dashboard.html";
+    window.location.href = "/dashboard";
   } catch (error) {
     setStatus(authStatus, error.message, "error");
   }
@@ -169,7 +172,7 @@ registerForm?.addEventListener("submit", async (event) => {
     });
     setSession(result.token, result.user);
     setStatus(authStatus, result.message, "success");
-    window.location.href = "/dashboard.html";
+    window.location.href = "/dashboard";
   } catch (error) {
     setStatus(authStatus, error.message, "error");
   }

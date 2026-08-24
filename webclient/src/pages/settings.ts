@@ -20,7 +20,7 @@ const CURRENCY_NAMES: Record<string, string> = {
 const user = getUser()!;
 
 const root = mountShell(
-  "/settings.html",
+  "/settings",
   "Settings",
   "Manage global app preferences for number display and currency."
 );

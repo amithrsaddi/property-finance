@@ -30,7 +30,7 @@ function monthBounds(monthValue: string): { from: string; to: string } {
 }
 
 const root = mountShell(
-  "/reports.html",
+  "/reports",
   "Reports",
   "Income, costs, cash flow, and profitability by property."
 );
@@ -181,7 +181,7 @@ async function loadReport(): Promise<void> {
           ${data.properties
             .map(
               (p) => `<tr>
-              <td><a href="/property.html?id=${p.id}">${p.name}</a></td>
+              <td><a href="/property?id=${p.id}">${p.name}</a></td>
               <td>${money(Number(p.rentReceived), user.preferredCurrency)}</td>
               <td>${money(Number(p.mortgageSpend), user.preferredCurrency)}</td>
               <td>${money(Number(p.propertyExpenses), user.preferredCurrency)}</td>

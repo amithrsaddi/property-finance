@@ -3,7 +3,7 @@ import { mountShell, setStatus } from "../shell.js";
 
 const user = getUser()!;
 
-const root = mountShell("/profile.html", "Profile", "Account details");
+const root = mountShell("/profile", "Profile", "Account details");
 
 root.innerHTML = `
   <section class="panel account-panel">

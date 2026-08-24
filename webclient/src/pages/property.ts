@@ -6,10 +6,10 @@ const propertyId = String(params.get("id") || "");
 const user = getUser()!;
 
 if (!propertyId || propertyId === "null") {
-  window.location.href = "/properties.html";
+  window.location.href = "/properties";
 }
 
-const root = mountShell("/properties.html", "Property", "Loading…");
+const root = mountShell("/properties", "Property", "Loading…");
 
 root.innerHTML = `
   <section class="panel">
@@ -111,24 +111,24 @@ function renderTab(tab: string): void {
 
   if (tab === "rent") {
     content.innerHTML = `<div class="panel"><h2>Rent activity</h2>${rentTable(cache.upcoming.rent)}
-      <p class="muted">Manage full rent history on the <a href="/rent.html?propertyId=${propertyId}">Rent</a> page.</p></div>`;
+      <p class="muted">Manage full rent history on the <a href="/rent?propertyId=${propertyId}">Rent</a> page.</p></div>`;
     return;
   }
 
   if (tab === "mortgage") {
     content.innerHTML = `<div class="panel"><h2>Mortgage activity</h2>${mortgageTable(cache.upcoming.mortgage)}
-      <p class="muted">Manage payments on the <a href="/payments.html?propertyId=${propertyId}">Payments</a> page.</p></div>`;
+      <p class="muted">Manage payments on the <a href="/payments?propertyId=${propertyId}">Payments</a> page.</p></div>`;
     return;
   }
 
   if (tab === "expenses") {
     content.innerHTML = `<div class="panel"><h2>Expenses</h2>${expenseTable(cache.upcoming.expenses)}
-      <p class="muted">Manage expenses on the <a href="/expenses.html?propertyId=${propertyId}">Expenses</a> page.</p></div>`;
+      <p class="muted">Manage expenses on the <a href="/expenses?propertyId=${propertyId}">Expenses</a> page.</p></div>`;
     return;
   }
 
   content.innerHTML = `<div class="panel"><h2>Documents</h2>
-    <p class="muted">Store tenancy agreements, EPCs, and other files for this property on the <a href="/documents.html?propertyId=${propertyId}">Documents</a> page.</p></div>`;
+    <p class="muted">Store tenancy agreements, EPCs, and other files for this property on the <a href="/documents?propertyId=${propertyId}">Documents</a> page.</p></div>`;
 }
 
 function table(rows: Array<Record<string, unknown>>, upcoming: boolean): string {
