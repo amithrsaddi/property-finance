@@ -152,6 +152,9 @@ var ICON_PAYMENTS = icon(
 var ICON_RATES = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M18.5 5.5 5.5 18.5"/><circle cx="7" cy="7" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="17" cy="17" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/>'
 );
+var ICON_CALCULATOR = icon(
+  '<rect x="4.5" y="3.5" width="15" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 8h8M8 12.2h.01M12 12.2h.01M16 12.2h.01M8 16.2h.01M12 16.2h.01M16 16.2h.01"/>'
+);
 var ICON_DOCUMENTS = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M7 3.5h7.2L19.5 9v11.5H7z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M14 3.5V9h5.5M9.5 13h6M9.5 16.5h6"/>'
 );
@@ -180,7 +183,8 @@ var NAV = [
     icon: ICON_MORTGAGES,
     children: [
       { href: "/payments", label: "Payments", icon: ICON_PAYMENTS },
-      { href: "/rates", label: "Rates", icon: ICON_RATES }
+      { href: "/rates", label: "Rates", icon: ICON_RATES },
+      { href: "/calculator", label: "Calculator", icon: ICON_CALCULATOR }
     ]
   },
   { href: "/expenses", label: "Expenses", icon: ICON_EXPENSES },
@@ -189,7 +193,7 @@ var NAV = [
 ];
 function isMortgagesPath(path) {
   const current = pagePath(path);
-  return current === "/payments" || current === "/rates";
+  return current === "/payments" || current === "/rates" || current === "/calculator";
 }
 function mortgagesNavOpen(activePath) {
   if (isMortgagesPath(activePath)) {

@@ -3043,6 +3043,443 @@ html.dark .switch-ui::after {
   background: hsl(var(--secondary));
 }
 
+.calc-board {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1.15rem;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.calc-board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.calc-reset {
+  flex-shrink: 0;
+}
+
+.calc-type {
+  width: min(100%, 22rem);
+}
+
+.calc-type .seg-tab {
+  flex: 1;
+  text-align: center;
+}
+
+.calc-board-main {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.92fr) minmax(18rem, 1.08fr);
+}
+
+.calc-form {
+  display: grid;
+  gap: 0.95rem;
+  padding: 1.15rem 1.2rem 1.25rem;
+  align-content: start;
+}
+
+.calc-form .field {
+  margin: 0;
+}
+
+.calc-form .field select {
+  min-height: 2.7rem;
+  border-radius: 0.75rem;
+  background: hsl(var(--secondary) / 0.45);
+}
+
+.calc-input,
+.calc-term,
+.calc-overpay {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.calc-input > span,
+.calc-term > span,
+.calc-overpay > span {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.calc-input-box {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: hsl(var(--secondary) / 0.45);
+  padding: 0 0.8rem;
+}
+
+.calc-input-box:focus-within {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.22);
+  background: var(--surface);
+}
+
+.calc-affix {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.calc-affix.is-suffix {
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.calc-input-box input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.02rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 0.55rem 0;
+  outline: none;
+  box-shadow: none;
+  appearance: textfield;
+}
+
+.calc-input-box input::-webkit-outer-spin-button,
+.calc-input-box input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.calc-term[hidden],
+.calc-overpay[hidden],
+.calc-input[hidden] {
+  display: none;
+}
+
+.calc-term-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.calc-overpay-type {
+  width: 100%;
+}
+
+.calc-overpay-type .seg-tab {
+  flex: 1;
+  text-align: center;
+  padding-inline: 0.35rem;
+}
+
+.calc-summary {
+  display: grid;
+  align-content: start;
+  gap: 0.15rem;
+  padding: 1.25rem 1.3rem 1.3rem;
+  background: hsl(0 0% 6%);
+  color: #f4f4f5;
+  min-height: 100%;
+}
+
+.calc-kicker {
+  margin: 0;
+  color: rgb(255 255 255 / 0.55);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.calc-monthly {
+  margin: 0.1rem 0 0;
+  font-size: clamp(2rem, 4vw, 2.55rem);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.calc-sub {
+  margin: 0.25rem 0 1rem;
+  color: rgb(255 255 255 / 0.58);
+  font-size: 0.82rem;
+}
+
+.calc-metrics {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+}
+
+.calc-metrics div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.calc-metrics dt {
+  color: rgb(255 255 255 / 0.55);
+  font-size: 0.8rem;
+}
+
+.calc-metrics dd {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.calc-summary .calc-split-legend,
+.calc-summary .calc-note,
+.calc-summary .calc-empty {
+  color: rgb(255 255 255 / 0.58);
+}
+
+.calc-summary .calc-split-track {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.calc-compare {
+  margin: 0.9rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.7rem;
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.calc-compare strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.calc-note {
+  margin: 0.85rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.calc-empty {
+  place-self: center;
+  text-align: center;
+  padding: 2rem 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  max-width: 18rem;
+}
+
+.calc-split-track {
+  display: flex;
+  height: 0.55rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: hsl(var(--secondary));
+}
+
+.calc-split-interest {
+  background: #fb923c;
+}
+
+.calc-split-capital {
+  background: #34d399;
+}
+
+.calc-split-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.calc-board-foot {
+  padding: 1.05rem 1.15rem 1.2rem;
+  border-top: 1px solid var(--line);
+  background: hsl(var(--secondary) / 0.28);
+}
+
+.calc-board-foot .calc-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.calc-board-foot .calc-section-head h2 {
+  margin: 0 0 0.15rem;
+  font-size: 0.95rem;
+}
+
+.calc-board-foot .calc-section-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.calc-year-tabs {
+  flex-shrink: 0;
+}
+
+.calc-year-tabs .seg-tab {
+  min-width: 6.5rem;
+  text-align: center;
+}
+
+.calc-schedule-wrap {
+  display: grid;
+  gap: 0.55rem;
+  max-height: 28rem;
+  overflow: auto;
+}
+
+.calc-schedule-wrap[hidden],
+.calc-graph-wrap[hidden] {
+  display: none !important;
+}
+
+.calc-year {
+  padding: 0.7rem 0.8rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--surface);
+}
+
+.calc-year.is-done {
+  border-color: color-mix(in srgb, #34d399 45%, var(--line));
+}
+
+.calc-year-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin-bottom: 0.45rem;
+}
+
+.calc-year-head strong {
+  font-size: 0.82rem;
+}
+
+.calc-year-head span,
+.calc-year-meta {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.calc-year-track {
+  height: 0.4rem;
+}
+
+.calc-year-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin-top: 0.4rem;
+}
+
+.calc-graph-wrap {
+  min-height: 16rem;
+}
+
+.calc-chart {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.calc-chart-legend {
+  margin: 0;
+}
+
+.legend-calc-interest,
+.legend-calc-capital,
+.legend-calc-balance {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  margin-right: 0.35rem;
+  vertical-align: -0.1rem;
+}
+
+.legend-calc-interest {
+  background: #fb923c;
+}
+
+.legend-calc-capital {
+  background: #34d399;
+}
+
+.legend-calc-balance {
+  background: hsl(var(--primary));
+}
+
+.calc-chart-canvas {
+  position: relative;
+  min-height: 16rem;
+  height: 16.5rem;
+}
+
+.calc-chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.calc-bar-interest {
+  fill: #fb923c;
+}
+
+.calc-bar-capital {
+  fill: #34d399;
+}
+
+.calc-balance-line {
+  fill: none;
+  stroke: hsl(var(--primary));
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.calc-balance-dot {
+  fill: var(--surface);
+  stroke: hsl(var(--primary));
+  stroke-width: 2;
+}
+
+.calc-axis-right {
+  text-anchor: start;
+}
+
+.calc-chart-hit {
+  fill: transparent;
+  cursor: default;
+}
+
+html[data-theme="dark"] .calc-summary,
+html.dark .calc-summary {
+  background: hsl(0 0% 10%);
+  border-left: 1px solid var(--line);
+}
+
 .year-select {
   display: flex;
   align-items: center;
@@ -4146,8 +4583,39 @@ html.dark .breakdown-grid .value.pending {
   }
 
   .overview-cards,
-  .overview-mid {
+  .overview-mid,
+  .calc-board-main {
     grid-template-columns: 1fr;
+  }
+
+  .calc-board-head {
+    flex-wrap: wrap;
+  }
+
+  .calc-type,
+  .calc-overpay-type {
+    width: 100%;
+  }
+
+  .calc-board-foot .calc-section-head {
+    flex-wrap: wrap;
+  }
+
+  .calc-year-tabs {
+    width: 100%;
+  }
+
+  .calc-year-tabs .seg-tab {
+    flex: 1;
+  }
+
+  .calc-summary {
+    border-top: 1px solid hsl(0 0% 16%);
+  }
+
+  html[data-theme="dark"] .calc-summary,
+  html.dark .calc-summary {
+    border-left: none;
   }
 
   .overview-panel-head,
