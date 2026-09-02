@@ -148,16 +148,6 @@ function labelize(value) {
 }
 
 // src/list-view.ts
-function storedListView(key, fallback) {
-  try {
-    const value = sessionStorage.getItem(key);
-    if (value === "list" || value === "grid") {
-      return value;
-    }
-  } catch {
-  }
-  return fallback;
-}
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -208,20 +198,6 @@ async function hydratePropertyThumbs(root2) {
     })
   );
 }
-function initials(value) {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) {
-    return "?";
-  }
-  return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join("");
-}
-function avatarTone(value) {
-  let hash = 0;
-  for (const char of value) {
-    hash = hash * 31 + char.charCodeAt(0) >>> 0;
-  }
-  return hash % 5;
-}
 function pillKind(status) {
   const value = String(status || "").toLowerCase();
   if (value === "paid" || value === "active" || value === "done" || value === "repayment") {
@@ -243,167 +219,126 @@ function statusPill(status, label) {
   const slug = String(status || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return `<span class="pill ${pillKind(status)}${slug ? ` pill-${slug}` : ""}">${escapeHtml(text)}</span>`;
 }
-function nameCell(title, subtitle, href, property) {
-  const heading = href ? `<a class="name-title" href="${escapeHtml(href)}">${escapeHtml(title)}</a>` : `<div class="name-title">${escapeHtml(title)}</div>`;
-  const propertyId = String(property?.propertyId || "");
-  const avatar = propertyId ? propertyThumbHtml(propertyId, Boolean(property?.hasImage)) : `<span class="row-avatar tone-${avatarTone(title)}">${escapeHtml(initials(title))}</span>`;
-  return `<div class="name-cell">
-    ${avatar}
-    <div>
-      ${heading}
-      ${subtitle ? `<div class="name-sub">${escapeHtml(subtitle)}</div>` : ""}
-    </div>
-  </div>`;
+var ICON_PLUS = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>`;
+var ICON_SORT = `<svg class="props-sort-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 7v10M8 7l-2.4 2.4M8 7l2.4 2.4M16 17V7M16 17l-2.4-2.4M16 17l2.4-2.4"/></svg>`;
+var ICON_CHEVRON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>`;
+var ICON_SEARCH = `<svg class="props-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>`;
+function addButtonHtml(id, label) {
+  return `<button class="btn props-add" id="${escapeHtml(id)}" type="button">${ICON_PLUS}${escapeHtml(label)}</button>`;
 }
-function summaryCell(title, subtitle) {
-  return `<div class="summary-cell">
-    <div class="name-title">${escapeHtml(title)}</div>
-    <div class="name-sub">${escapeHtml(subtitle)}</div>
-  </div>`;
+function setPageSubtitle(text) {
+  const el = document.querySelector(".main .topbar p");
+  if (el) {
+    el.textContent = text;
+  }
 }
-function extraCell(extra) {
-  return `<div class="summary-cell">
-    <div class="name-title">${escapeHtml(extra.title)}</div>
-    ${extra.subtitle ? `<div class="name-sub">${escapeHtml(extra.subtitle)}</div>` : ""}
-  </div>`;
+function compactCurrency(amount, currency) {
+  const abs = Math.abs(amount);
+  let value = amount;
+  let suffix = "";
+  if (abs >= 1e6) {
+    value = amount / 1e6;
+    suffix = "m";
+  } else if (abs >= 1e4) {
+    value = amount / 1e3;
+    suffix = "k";
+  }
+  const digits = suffix && Math.abs(value) < 10 ? 2 : 0;
+  try {
+    const formatted = new Intl.NumberFormat(void 0, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits
+    }).format(value);
+    return suffix ? `${formatted}${suffix}` : formatted;
+  } catch {
+    return String(Math.round(amount || 0));
+  }
 }
 function kebabMenu(id, open, itemsHtml) {
   if (!itemsHtml.trim()) {
     return "";
   }
   return `<div class="row-menu ${open ? "open" : ""}">
-    <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">\u22EF</button>
+    <button class="kebab-btn props-item-more" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">${ICON_CHEVRON}</button>
     <div class="row-menu-pop"${open ? "" : " hidden"}>${itemsHtml}</div>
   </div>`;
 }
-function viewToggleHtml(view2) {
-  return `<div class="view-toggle" role="group" aria-label="View">
-    <button class="view-btn${view2 === "list" ? " active" : ""}" data-view-mode="list" type="button" aria-label="List view" aria-pressed="${view2 === "list"}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
-    </button>
-    <button class="view-btn${view2 === "grid" ? " active" : ""}" data-view-mode="grid" type="button" aria-label="Grid view" aria-pressed="${view2 === "grid"}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
-    </button>
-  </div>`;
-}
-function searchFieldHtml(id = "list-search") {
-  return `<label class="search-field">
-    <span class="sr-only">Search</span>
-    <input id="${id}" type="search" placeholder="Search" />
-    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>
+function searchFieldHtml(id = "list-search", placeholder = "Search") {
+  return `<label class="props-search">
+    <span class="sr-only">${escapeHtml(placeholder)}</span>
+    ${ICON_SEARCH}
+    <input id="${id}" type="search" placeholder="${escapeHtml(placeholder)}" />
   </label>`;
 }
 function sortFieldHtml(options, id = "sort-by") {
-  return `<label class="sort-field">
-    <span>Sort by</span>
+  return `<label class="props-sort">
+    <span class="sr-only">Sort by</span>
+    ${ICON_SORT}
     <select id="${id}">
       ${options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join("")}
     </select>
   </label>`;
 }
-function renderDataList(rows, view2, empty, openMenuId2, options) {
+function renderDataList(rows, _view, empty, openMenuId2, options) {
   if (!rows.length) {
-    return `<p class="empty">${empty}</p>`;
+    return `<div class="props-board"><p class="props-empty">${empty}</p></div>`;
   }
   const selectedIds = options?.selectedIds;
   const selectable = Boolean(selectedIds);
-  const selectCell = (row) => {
-    if (!selectable || !selectedIds) {
-      return "";
-    }
-    const checked = selectedIds.has(row.id);
-    return `<label class="row-check">
-      <span class="sr-only">Select ${escapeHtml(row.title)}</span>
-      <input type="checkbox" data-select="${escapeHtml(row.id)}"${checked ? " checked" : ""} />
-    </label>`;
-  };
-  const allSelected = selectable && rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
+  const allSelected = selectable && rows.every((row) => selectedIds.has(row.id));
   const someSelected = selectable && rows.some((row) => selectedIds.has(row.id));
-  const hasActions = rows.some((row) => Boolean(row.actions));
-  const extraHeaders = rows[0]?.extras?.map((extra) => extra.header) ?? [];
-  const hasExtras = extraHeaders.length > 0;
-  const cells = (row) => {
-    const actions = kebabMenu(row.id, openMenuId2 === row.id, row.actions || "");
-    return {
-      name: nameCell(row.title, row.subtitle, row.href, row),
-      status: statusPill(row.status, row.statusLabel),
-      summary: summaryCell(row.summaryTitle, row.summarySub),
-      extras: extraHeaders.map((header, index) => {
-        const extra = row.extras?.[index] || { header, title: "\u2014" };
-        return extraCell(extra);
-      }),
-      actions
-    };
-  };
-  if (view2 === "grid") {
-    return `<div class="property-grid">${rows.map((row) => {
-      const cell = cells(row);
-      const extras = hasExtras ? `<div class="card-extras">${extraHeaders.map((header, index) => {
-        const extra = row.extras?.[index] || { header, title: "\u2014" };
-        return `<div class="card-extra">
-                  <div class="name-sub">${escapeHtml(header)}</div>
-                  <div class="name-title">${escapeHtml(extra.title)}</div>
-                  ${extra.subtitle ? `<div class="name-sub">${escapeHtml(extra.subtitle)}</div>` : ""}
-                </div>`;
-      }).join("")}</div>` : cell.summary;
-      return `<article class="property-card">
-          <div class="property-card-head">
-            ${selectCell(row)}
-            ${cell.name}
-            ${hasActions ? cell.actions : ""}
+  const selectAll = selectable ? `<div class="props-select-bar">
+        <label class="row-check">
+          <input type="checkbox" data-select-all${allSelected ? " checked" : ""}${someSelected && !allSelected ? ' data-indeterminate="true"' : ""} />
+          <span>Select page</span>
+        </label>
+      </div>` : "";
+  const items = rows.map((row) => {
+    const checked = Boolean(selectedIds?.has(row.id));
+    const select = selectable ? `<label class="row-check">
+            <span class="sr-only">Select ${escapeHtml(row.title)}</span>
+            <input type="checkbox" data-select="${escapeHtml(row.id)}"${checked ? " checked" : ""} />
+          </label>` : "";
+    const mainTag = row.href ? "a" : "div";
+    const hrefAttr = row.href ? ` href="${escapeHtml(row.href)}"` : "";
+    return `<article class="props-item">
+        ${select}
+        <${mainTag} class="props-item-main"${hrefAttr}>
+          ${propertyThumbHtml(String(row.propertyId || ""), Boolean(row.hasImage))}
+          <div class="props-item-copy">
+            <div class="props-item-title">
+              <strong>${escapeHtml(row.title)}</strong>
+              ${statusPill(row.status, row.statusLabel)}
+            </div>
+            ${row.subtitle ? `<p class="props-item-address">${escapeHtml(row.subtitle)}</p>` : ""}
           </div>
-          <div class="property-card-meta">
-            <div class="card-status">${cell.status}</div>
-            ${extras}
+          <div class="props-item-figures">
+            <strong>${escapeHtml(row.summaryTitle || "\u2014")}</strong>
+            ${row.summarySub ? `<span>${escapeHtml(row.summarySub)}</span>` : ""}
           </div>
-        </article>`;
-    }).join("")}</div>`;
-  }
-  return `<div class="data-table-wrap">
-    <table class="data-table${hasExtras ? " has-extras" : ""}${selectable ? " has-select" : ""}">
-      <thead>
-        <tr>
-          ${selectable ? `<th class="col-check"><label class="row-check">
-                  <span class="sr-only">Select all</span>
-                  <input type="checkbox" data-select-all${allSelected ? " checked" : ""}${someSelected && !allSelected ? ' data-indeterminate="true"' : ""} />
-                </label></th>` : ""}
-          <th>Name</th>
-          <th>Status</th>
-          ${hasExtras ? extraHeaders.map((header) => `<th>${escapeHtml(header)}</th>`).join("") : "<th>Summary</th>"}
-          ${hasActions ? `<th class="col-actions">Actions</th>` : ""}
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map((row) => {
-    const cell = cells(row);
-    const extraTds = hasExtras ? cell.extras.map(
-      (html, index) => `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
-    ).join("") : `<td class="col-summary">${cell.summary}</td>`;
-    return `<tr>
-              ${selectable ? `<td class="col-check">${selectCell(row)}</td>` : ""}
-              <td class="col-name">${cell.name}</td>
-              <td class="col-status">${cell.status}</td>
-              ${extraTds}
-              ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
-            </tr>`;
-  }).join("")}
-      </tbody>
-    </table>
-  </div>`;
+        </${mainTag}>
+        ${kebabMenu(row.id, openMenuId2 === row.id, row.actions || "")}
+      </article>`;
+  }).join("");
+  return `<div class="props-board">${selectAll}${items}</div>`;
 }
 function bindListChrome(options) {
-  document.querySelectorAll("[data-view-mode]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.viewMode === options.view);
-    button.setAttribute("aria-pressed", String(button.dataset.viewMode === options.view));
-    button.addEventListener("click", () => {
-      const next = button.dataset.viewMode === "grid" ? "grid" : "list";
-      document.querySelectorAll("[data-view-mode]").forEach((btn) => {
-        btn.classList.toggle("active", btn.dataset.viewMode === next);
-        btn.setAttribute("aria-pressed", String(btn.dataset.viewMode === next));
+  if (options.onView) {
+    document.querySelectorAll("[data-view-mode]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.viewMode === options.view);
+      button.setAttribute("aria-pressed", String(button.dataset.viewMode === options.view));
+      button.addEventListener("click", () => {
+        const next = button.dataset.viewMode === "grid" ? "grid" : "list";
+        document.querySelectorAll("[data-view-mode]").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.viewMode === next);
+          btn.setAttribute("aria-pressed", String(btn.dataset.viewMode === next));
+        });
+        options.onView(next);
       });
-      options.onView(next);
     });
-  });
+  }
   document.getElementById(options.searchId || "list-search")?.addEventListener("input", (event) => {
     options.onSearch(event.target.value);
   });
@@ -486,7 +421,7 @@ var ICON_MOON_GLYPH = icon(
 var ICON_USER = icon(
   '<circle cx="12" cy="8" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5 19.2c.8-3.2 3.5-5 7-5s6.2 1.8 7 5"/>'
 );
-var ICON_CHEVRON = icon(
+var ICON_CHEVRON2 = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/>',
   "nav-chevron"
 );
@@ -569,7 +504,7 @@ function renderNav(activePath) {
       return `<div class="nav-group${open ? " open" : ""}">
         <button class="nav-group-toggle${childActive ? " active" : ""}" id="mortgages-nav-toggle" type="button" aria-expanded="${open}" aria-controls="mortgages-nav-sub">
           <span class="nav-group-label">${item.icon}${item.label}</span>
-          ${ICON_CHEVRON}
+          ${ICON_CHEVRON2}
         </button>
         <div class="nav-sub" id="mortgages-nav-sub"${open ? "" : " hidden"}>
           ${item.children.map(
@@ -778,49 +713,41 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/expenses.ts
-var VIEW_KEY = "pf-expenses-view-v2";
 var MAX_FILE_BYTES = 4 * 1024 * 1024;
 var ACCEPT = ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
 var root = mountShell(
   "/expenses",
   "Expenses",
-  "Property expenses and portfolio-level additional costs.",
-  `<button class="btn" id="add-expense-btn" type="button">+ Add Expense</button>`
+  "Loading expenses\u2026",
+  addButtonHtml("add-expense-btn", "Add expense")
 );
 var user = getUser();
 var presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 var cache = [];
 var search = "";
 var sortBy = "date";
-var view = storedListView(VIEW_KEY, "list");
 var openMenuId = null;
 var scope = "property";
 var selectedFile = null;
 root.innerHTML = `
-  <section class="panel table-card">
-    <div class="table-toolbar">
-      <div class="table-toolbar-start">
-        <div class="seg-tabs" id="scope-tabs">
-          <button class="seg-tab active" data-scope="property" type="button">Property expenses</button>
-          <button class="seg-tab" data-scope="general" type="button">Additional expenses</button>
-        </div>
-        <div class="table-filters">
-          <div class="field"><label>Month</label><input id="month" type="month" value="${currentMonthValue()}" /></div>
-          <div class="field" id="filter-property-wrap"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        </div>
+  <section class="props-page">
+    <div class="props-toolbar">
+      <div class="props-tabs" id="scope-tabs" role="group" aria-label="Expense type">
+        <button class="props-tab active" data-scope="property" type="button">Property</button>
+        <button class="props-tab" data-scope="general" type="button">Additional</button>
       </div>
-      <div class="table-toolbar-end">
-        ${sortFieldHtml([
+      ${sortFieldHtml([
   { value: "date", label: "Date" },
   { value: "name", label: "Name" },
   { value: "amount", label: "Amount" }
 ])}
-        ${searchFieldHtml()}
-        ${viewToggleHtml(view)}
-      </div>
     </div>
+    <div class="props-filters">
+      <div class="field"><label>Month</label><input id="month" type="month" value="${currentMonthValue()}" /></div>
+      <div class="field" id="filter-property-wrap"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+    </div>
+    ${searchFieldHtml("list-search", "Search expenses")}
     <div class="status" id="status" hidden></div>
-    <div id="totals" class="metrics table-metrics"></div>
     <div id="list"></div>
   </section>
 
@@ -960,7 +887,7 @@ async function loadProperties() {
   }
 }
 function syncScopeUi() {
-  document.querySelectorAll("#scope-tabs .seg-tab").forEach((el) => {
+  document.querySelectorAll("#scope-tabs .props-tab").forEach((el) => {
     el.classList.toggle("active", el.dataset.scope === scope);
   });
   document.getElementById("expense-form-title").textContent = scope === "property" ? "Add property expense" : "Add additional expense";
@@ -1014,7 +941,7 @@ function renderList() {
         actions: `${hasDocument ? `<button type="button" data-open="${documentId}">Open receipt</button><button type="button" data-download="${documentId}">Download receipt</button>` : ""}<button type="button" data-delete="${id}">Delete</button>`
       };
     }),
-    view,
+    "list",
     "No expenses for this period.",
     openMenuId
   );
@@ -1057,10 +984,12 @@ async function loadExpenses() {
   const month = document.getElementById("month").value;
   const propertyId = scope === "property" ? document.getElementById("filterProperty").value : "";
   const data = await api(`/expenses${qs({ month, scope, propertyId })}`);
-  document.getElementById("totals").innerHTML = `
-    <div class="metric"><div class="label">Total</div><div class="value">${money(data.totals.amount, user.preferredCurrency)}</div></div>
-  `;
   cache = data.expenses;
+  const count = cache.length;
+  const noun = count === 1 ? "expense" : "expenses";
+  setPageSubtitle(
+    count ? `${count} ${noun}, ${compactCurrency(data.totals.amount, user.preferredCurrency)} total` : "No expenses for this period"
+  );
   renderList();
 }
 document.getElementById("scope-tabs")?.addEventListener("click", (event) => {
@@ -1161,12 +1090,6 @@ document.getElementById("month")?.addEventListener("change", () => {
   void loadExpenses();
 });
 bindListChrome({
-  view,
-  onView: (next) => {
-    view = next;
-    sessionStorage.setItem(VIEW_KEY, view);
-    renderList();
-  },
   onSearch: (value) => {
     search = value;
     renderList();

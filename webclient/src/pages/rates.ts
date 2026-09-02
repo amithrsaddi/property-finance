@@ -1,14 +1,14 @@
 import { api, formatDateDmY, getUser, money, qs, labelize } from "../lib.js";
 import {
+  addButtonHtml,
   bindListChrome,
   bindRowMenus,
+  compactCurrency,
   matchesQuery,
   renderDataList,
   searchFieldHtml,
-  sortFieldHtml,
-  viewToggleHtml,
-  storedListView,
-  type ListViewMode
+  setPageSubtitle,
+  sortFieldHtml
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
@@ -31,42 +31,33 @@ type MortgageRow = {
   status: string;
 };
 
-const VIEW_KEY = "pf-rates-view-v2";
-const MOBILE_VIEW = window.matchMedia("(max-width: 900px)");
-const viewKey = () => (MOBILE_VIEW.matches ? `${VIEW_KEY}-m` : VIEW_KEY);
 const root = mountShell(
   "/rates",
   "Rates",
-  "Interest rates and fixed-rate expiry for your mortgages.",
-  `<button class="btn" id="add-mortgage-btn" type="button">+ Add Mortgage</button>`
+  "Loading rates…",
+  addButtonHtml("add-mortgage-btn", "Add mortgage")
 );
 const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 let cache: MortgageRow[] = [];
 let search = "";
 let sortBy = "name";
-let view: ListViewMode = storedListView(viewKey(), "grid");
 let editingId: string | null = null;
 let openMenuId: string | null = null;
 
 root.innerHTML = `
-  <section class="panel table-card">
-    <div class="table-toolbar">
-      <div class="table-toolbar-start">
-        <div class="table-filters">
-          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        </div>
+  <section class="props-page">
+    <div class="props-toolbar">
+      <div class="props-filters">
+        <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
       </div>
-      <div class="table-toolbar-end">
-        ${sortFieldHtml([
-          { value: "name", label: "Name" },
-          { value: "rate", label: "Rate" },
-          { value: "expiry", label: "Expiry" }
-        ])}
-        ${searchFieldHtml()}
-        ${viewToggleHtml(view)}
-      </div>
+      ${sortFieldHtml([
+        { value: "name", label: "Name" },
+        { value: "rate", label: "Rate" },
+        { value: "expiry", label: "Expiry" }
+      ])}
     </div>
+    ${searchFieldHtml("list-search", "Search rates")}
     <div class="status" id="status" hidden></div>
     <div id="content"></div>
   </section>
@@ -218,6 +209,13 @@ function visibleRows(): MortgageRow[] {
 function renderRates(): void {
   const content = document.getElementById("content")!;
   const rows = visibleRows();
+  const outstanding = rows.reduce((sum, row) => sum + Number(row.outstanding_balance || 0), 0);
+  const noun = rows.length === 1 ? "mortgage" : "mortgages";
+  setPageSubtitle(
+    rows.length
+      ? `${rows.length} ${noun}, ${compactCurrency(outstanding, user.preferredCurrency)} outstanding`
+      : "No active mortgages"
+  );
   content.innerHTML = renderDataList(
     rows.map((m) => ({
       id: String(m.id),
@@ -228,27 +226,14 @@ function renderRates(): void {
       hasImage: Boolean(m.hasImage),
       status: m.status === "archived" ? "archived" : String(m.mortgage_type || "repayment"),
       statusLabel: labelize(String(m.mortgage_type || "repayment")),
-      summaryTitle: money(Number(m.outstanding_balance), user.preferredCurrency),
-      summarySub: "Outstanding",
-      extras: [
-        {
-          header: "Interest",
-          title: `${Number(m.interest_rate)}%`
-        },
-        {
-          header: "Monthly Payment",
-          title: money(Number(m.monthly_repayment), user.preferredCurrency)
-        },
-        {
-          header: "Fixed Until",
-          title: m.fixed_rate_expiry ? formatDateDmY(m.fixed_rate_expiry) : "—",
-          subtitle: expiryHint(m.fixed_rate_expiry)
-        }
-      ],
+      summaryTitle: `${Number(m.interest_rate)}%`,
+      summarySub: m.fixed_rate_expiry
+        ? `Fixed until ${formatDateDmY(m.fixed_rate_expiry)}${expiryHint(m.fixed_rate_expiry) ? ` · ${expiryHint(m.fixed_rate_expiry)}` : ""}`
+        : money(Number(m.outstanding_balance), user.preferredCurrency) + " outstanding",
       actions: `<button type="button" data-edit="${m.id}">Edit</button><button type="button" data-delete="${m.id}">Delete</button>`
     })),
-    view,
-    "No mortgage rates yet. Use Add Mortgage to create one.",
+    "list",
+    "No mortgage rates yet. Use Add mortgage to create one.",
     openMenuId
   );
   bindRowMenus(
@@ -362,12 +347,6 @@ document.getElementById("filterProperty")?.addEventListener("change", () => {
 });
 
 bindListChrome({
-  view,
-  onView: (next) => {
-    view = next;
-    sessionStorage.setItem(viewKey(), view);
-    renderRates();
-  },
   onSearch: (value) => {
     search = value;
     renderRates();

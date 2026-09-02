@@ -1,62 +1,54 @@
 import { api, apiFile, currentMonthValue, formatDateDmY, getUser, money, qs, labelize } from "../lib.js";
 import {
+  addButtonHtml,
   bindListChrome,
   bindRowMenus,
+  compactCurrency,
   matchesQuery,
   renderDataList,
   searchFieldHtml,
-  sortFieldHtml,
-  viewToggleHtml,
-  storedListView,
-  type ListViewMode
+  setPageSubtitle,
+  sortFieldHtml
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
-const VIEW_KEY = "pf-expenses-view-v2";
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const ACCEPT =
   ".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf,image/*";
 const root = mountShell(
   "/expenses",
   "Expenses",
-  "Property expenses and portfolio-level additional costs.",
-  `<button class="btn" id="add-expense-btn" type="button">+ Add Expense</button>`
+  "Loading expenses…",
+  addButtonHtml("add-expense-btn", "Add expense")
 );
 const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
 let cache: Array<Record<string, unknown>> = [];
 let search = "";
 let sortBy = "date";
-let view: ListViewMode = storedListView(VIEW_KEY, "list");
 let openMenuId: string | null = null;
 let scope: "property" | "general" = "property";
 let selectedFile: File | null = null;
 
 root.innerHTML = `
-  <section class="panel table-card">
-    <div class="table-toolbar">
-      <div class="table-toolbar-start">
-        <div class="seg-tabs" id="scope-tabs">
-          <button class="seg-tab active" data-scope="property" type="button">Property expenses</button>
-          <button class="seg-tab" data-scope="general" type="button">Additional expenses</button>
-        </div>
-        <div class="table-filters">
-          <div class="field"><label>Month</label><input id="month" type="month" value="${currentMonthValue()}" /></div>
-          <div class="field" id="filter-property-wrap"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-        </div>
+  <section class="props-page">
+    <div class="props-toolbar">
+      <div class="props-tabs" id="scope-tabs" role="group" aria-label="Expense type">
+        <button class="props-tab active" data-scope="property" type="button">Property</button>
+        <button class="props-tab" data-scope="general" type="button">Additional</button>
       </div>
-      <div class="table-toolbar-end">
-        ${sortFieldHtml([
-          { value: "date", label: "Date" },
-          { value: "name", label: "Name" },
-          { value: "amount", label: "Amount" }
-        ])}
-        ${searchFieldHtml()}
-        ${viewToggleHtml(view)}
-      </div>
+      ${sortFieldHtml([
+        { value: "date", label: "Date" },
+        { value: "name", label: "Name" },
+        { value: "amount", label: "Amount" }
+      ])}
     </div>
+    <div class="props-filters">
+      <div class="field"><label>Month</label><input id="month" type="month" value="${currentMonthValue()}" /></div>
+      <div class="field" id="filter-property-wrap"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+    </div>
+    ${searchFieldHtml("list-search", "Search expenses")}
     <div class="status" id="status" hidden></div>
-    <div id="totals" class="metrics table-metrics"></div>
     <div id="list"></div>
   </section>
 
@@ -205,7 +197,7 @@ async function loadProperties(): Promise<void> {
 }
 
 function syncScopeUi(): void {
-  document.querySelectorAll("#scope-tabs .seg-tab").forEach((el) => {
+  document.querySelectorAll("#scope-tabs .props-tab").forEach((el) => {
     el.classList.toggle("active", (el as HTMLElement).dataset.scope === scope);
   });
   document.getElementById("expense-form-title")!.textContent =
@@ -268,7 +260,7 @@ function renderList(): void {
         }<button type="button" data-delete="${id}">Delete</button>`
       };
     }),
-    view,
+    "list",
     "No expenses for this period.",
     openMenuId
   );
@@ -319,10 +311,14 @@ async function loadExpenses(): Promise<void> {
     totals: { amount: number };
   }>(`/expenses${qs({ month, scope, propertyId })}`);
 
-  document.getElementById("totals")!.innerHTML = `
-    <div class="metric"><div class="label">Total</div><div class="value">${money(data.totals.amount, user.preferredCurrency)}</div></div>
-  `;
   cache = data.expenses;
+  const count = cache.length;
+  const noun = count === 1 ? "expense" : "expenses";
+  setPageSubtitle(
+    count
+      ? `${count} ${noun}, ${compactCurrency(data.totals.amount, user.preferredCurrency)} total`
+      : "No expenses for this period"
+  );
   renderList();
 }
 
@@ -428,12 +424,6 @@ document.getElementById("month")?.addEventListener("change", () => {
 });
 
 bindListChrome({
-  view,
-  onView: (next) => {
-    view = next;
-    sessionStorage.setItem(VIEW_KEY, view);
-    renderList();
-  },
   onSearch: (value) => {
     search = value;
     renderList();

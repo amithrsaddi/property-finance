@@ -707,7 +707,7 @@ function renderCards(data) {
       <div class="label">Net Profit</div>
       <div class="value">${money(c.netProfit.amount, currency)}</div>
       <div class="details">
-        <span>Rent \u2212 expenses</span>
+        <span>Rent \u2212 Expenses</span>
         <span>${c.netProfit.amount >= 0 ? "In profit" : "In deficit"}</span>
       </div>
     </article>
@@ -789,12 +789,12 @@ function renderBreakdowns(data) {
           <div class="breakdown-cell">
             <div class="label">Net Profit</div>
             <div class="value profit${row.netProfit < 0 ? " negative" : ""}">${money(row.netProfit, currency)}</div>
-            <div class="hint">Rent \u2212 expenses</div>
+            <div class="hint">Rent \u2212 Expenses</div>
           </div>
           <div class="breakdown-cell">
             <div class="label">Pending</div>
             <div class="value pending${row.pending < 0 ? " negative" : ""}">${money(row.pending, currency)}</div>
-            <div class="hint">Income + expenses still due</div>
+            <div class="hint">Income + Expenses still due</div>
           </div>
         </div>
       </article>`

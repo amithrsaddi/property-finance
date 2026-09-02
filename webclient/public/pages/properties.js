@@ -136,16 +136,6 @@ function labelize(value) {
 }
 
 // src/list-view.ts
-function storedListView(key, fallback) {
-  try {
-    const value = sessionStorage.getItem(key);
-    if (value === "list" || value === "grid") {
-      return value;
-    }
-  } catch {
-  }
-  return fallback;
-}
 function escapeHtml(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -547,61 +537,55 @@ function setStatus(el, message, type = "info") {
 }
 
 // src/pages/properties.ts
-var VIEW_KEY = "pf-properties-view-v2";
 var MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 var IMAGE_ACCEPT = ".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp";
 var user = getUser();
+var PLUS_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>`;
+var SORT_ICON = `<svg class="props-sort-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 7v10M8 7l-2.4 2.4M8 7l2.4 2.4M16 17V7M16 17l-2.4-2.4M16 17l2.4-2.4"/></svg>`;
+var CHEVRON_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>`;
+var SEARCH_ICON = `<svg class="props-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>`;
 var root = mountShell(
   "/properties",
   "Properties",
-  "Manage your property portfolio.",
-  `<button class="btn" id="add-property-btn" type="button">+ Add Property</button>`
+  "Loading properties\u2026",
+  `<button class="btn props-add" id="add-property-btn" type="button">${PLUS_ICON}Add property</button>`
 );
 var editingId = null;
 var cache = [];
 var statusFilter = "all";
 var sortBy = "newest";
 var search = "";
-var view = storedListView(VIEW_KEY, "grid");
 var openMenuId = null;
 var selectedImage = null;
 var removeImage = false;
 var previewObjectUrl = null;
 root.innerHTML = `
-  <section class="panel table-card">
-    <div class="table-toolbar">
-      <div class="seg-tabs" id="status-tabs">
-        <button class="seg-tab active" data-status="all" type="button">All properties</button>
-        <button class="seg-tab" data-status="archived" type="button">Archived</button>
+  <section class="props-page">
+    <div class="props-toolbar">
+      <div class="props-tabs" id="status-tabs" role="group" aria-label="Property status">
+        <button class="props-tab active" data-status="all" type="button">All</button>
+        <button class="props-tab" data-status="archived" type="button">Archived</button>
       </div>
-      <div class="table-toolbar-end">
-        <label class="sort-field">
-          <span>Sort by</span>
-          <select id="sort-by">
-            <option value="newest">Newest</option>
-            <option value="name">Name</option>
-            <option value="value">Value</option>
-            <option value="rent">Rent</option>
-          </select>
-        </label>
-        <label class="search-field">
-          <span class="sr-only">Search</span>
-          <input id="property-search" type="search" placeholder="Search" />
-          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>
-        </label>
-        <div class="view-toggle" role="group" aria-label="View">
-          <button class="view-btn${view === "list" ? " active" : ""}" id="view-list" type="button" aria-label="List view" aria-pressed="${view === "list"}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
-          </button>
-          <button class="view-btn${view === "grid" ? " active" : ""}" id="view-grid" type="button" aria-label="Grid view" aria-pressed="${view === "grid"}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
-          </button>
-        </div>
-      </div>
+      <label class="props-sort">
+        <span class="sr-only">Sort by</span>
+        ${SORT_ICON}
+        <select id="sort-by">
+          <option value="newest">Newest</option>
+          <option value="name">Name</option>
+          <option value="value">Value</option>
+          <option value="rent">Rent</option>
+        </select>
+      </label>
     </div>
+    <label class="props-search">
+      <span class="sr-only">Search by address</span>
+      ${SEARCH_ICON}
+      <input id="property-search" type="search" placeholder="Search by address" />
+    </label>
     <div class="status" id="status" hidden></div>
-    <div id="property-list"></div>
+    <div class="props-board" id="property-list"></div>
   </section>
+
 
   <div class="modal-backdrop" id="property-modal" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="form-title">
@@ -667,6 +651,46 @@ var removeImageBtn = document.getElementById("remove-property-image");
 function escapeHtml2(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+function compactCurrency(amount) {
+  const abs = Math.abs(amount);
+  let value = amount;
+  let suffix = "";
+  if (abs >= 1e6) {
+    value = amount / 1e6;
+    suffix = "m";
+  } else if (abs >= 1e4) {
+    value = amount / 1e3;
+    suffix = "k";
+  }
+  const digits = suffix && Math.abs(value) < 10 ? 2 : 0;
+  try {
+    const formatted = new Intl.NumberFormat(void 0, {
+      style: "currency",
+      currency: user.preferredCurrency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits
+    }).format(value);
+    return suffix ? `${formatted}${suffix}` : formatted;
+  } catch {
+    return `${(amount || 0).toFixed(0)}`;
+  }
+}
+function updateHeadline() {
+  const el = document.querySelector(".main .topbar p");
+  if (!el) {
+    return;
+  }
+  const count = cache.length;
+  const total = cache.reduce((sum, row) => sum + Number(row.currentValue || 0), 0);
+  const noun = count === 1 ? "Property" : "Properties";
+  if (!count) {
+    el.textContent = statusFilter === "Archived" ? "No archived properties" : "No properties";
+    return;
+  }
+  const prefix = statusFilter === "archived" ? `${count} archived ${noun}` : `${noun} - ${count}`;
+  el.textContent = `${prefix}, Portfolio value - ${compactCurrency(total)}`;
+}
+
 function createdTime(row) {
   const raw = row.createdAt || row.created_at;
   const time = raw ? new Date(String(raw)).getTime() : 0;
@@ -811,32 +835,19 @@ function statusBadge(status) {
   const archived = status === "archived";
   return `<span class="pill ${archived ? "paused" : "done"}">${archived ? "Archived" : "Active"}</span>`;
 }
-function nameCell(row) {
-  const name = String(row.name || "Untitled");
-  const id = String(row.id);
-  return `<div class="name-cell">
-    ${propertyThumbHtml(id, Boolean(row.hasImage))}
-    <div>
-      <a class="name-title" href="/property?id=${escapeHtml2(id)}">${escapeHtml2(name)}</a>
-      <div class="name-sub">${escapeHtml2(row.address || "No address")}</div>
-    </div>
-  </div>`;
-}
-function summaryCell(row) {
-  const type = labelize(String(row.propertyType || "residential"));
-  const rent = money(Number(row.expectedMonthlyRent || 0), user.preferredCurrency);
-  const value = money(Number(row.currentValue || 0), user.preferredCurrency);
-  return `<div class="summary-cell">
-    <div class="name-title">${escapeHtml2(type)}</div>
-    <div class="name-sub">Rent ${escapeHtml2(rent)} \xB7 Value ${escapeHtml2(value)}</div>
-  </div>`;
+function figureLine(row) {
+  const rent = Number(row.expectedMonthlyRent || 0);
+  if (rent > 0) {
+    return `${money(rent, user.preferredCurrency)}/mo rent`;
+  }
+  return labelize(String(row.propertyType || "residential"));
 }
 function actionMenu(row) {
   const id = String(row.id);
   const open = openMenuId === id;
   const archived = row.status === "archived";
   return `<div class="row-menu ${open ? "open" : ""}">
-    <button class="kebab-btn" data-menu="${escapeHtml2(id)}" type="button" aria-label="Actions" aria-expanded="${open}">\u22EF</button>
+    <button class="kebab-btn props-item-more" data-menu="${escapeHtml2(id)}" type="button" aria-label="Actions" aria-expanded="${open}">${CHEVRON_ICON}</button>
     <div class="row-menu-pop"${open ? "" : " hidden"}>
       <a href="/property?id=${escapeHtml2(id)}">Open</a>
       <button type="button" data-edit="${escapeHtml2(id)}">Edit</button>
@@ -846,44 +857,31 @@ function actionMenu(row) {
 }
 function renderList(rows) {
   if (!rows.length) {
-    return `<p class="empty">No properties found. Use + Add Property to create one.</p>`;
+    return `<p class="props-empty">No properties found. Use Add property to create one.</p>`;
   }
-  if (view === "grid") {
-    return `<div class="property-grid">${rows.map(
-      (row) => `<article class="property-card">
-          <div class="property-card-head">
-            ${nameCell(row)}
-            ${actionMenu(row)}
+  return rows.map((row) => {
+    const id = String(row.id);
+    const name = String(row.name || "Untitled");
+    const address = String(row.address || "No address");
+    const value = money(Number(row.currentValue || 0), user.preferredCurrency);
+    return `<article class="props-item">
+        <a class="props-item-main" href="/property?id=${escapeHtml2(id)}">
+          ${propertyThumbHtml(id, Boolean(row.hasImage))}
+          <div class="props-item-copy">
+            <div class="props-item-title">
+              <strong>${escapeHtml2(name)}</strong>
+              ${statusBadge(String(row.status))}
+            </div>
+            <p class="props-item-address">${escapeHtml2(address)}</p>
           </div>
-          <div class="property-card-meta">
-            <div class="card-status">${statusBadge(String(row.status))}</div>
-            ${summaryCell(row)}
+          <div class="props-item-figures">
+            <strong>${escapeHtml2(value)}</strong>
+            <span>${escapeHtml2(figureLine(row))}</span>
           </div>
-        </article>`
-    ).join("")}</div>`;
-  }
-  return `<div class="data-table-wrap">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Status</th>
-          <th>Summary</th>
-          <th class="col-actions">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(
-    (row) => `<tr>
-              <td class="col-name">${nameCell(row)}</td>
-              <td class="col-status">${statusBadge(String(row.status))}</td>
-              <td class="col-summary">${summaryCell(row)}</td>
-              <td class="col-actions">${actionMenu(row)}</td>
-            </tr>`
-  ).join("")}
-      </tbody>
-    </table>
-  </div>`;
+        </a>
+        ${actionMenu(row)}
+      </article>`;
+  }).join("");
 }
 function bindListActions(rows) {
   const list = document.getElementById("property-list");
@@ -955,13 +953,10 @@ function bindListActions(rows) {
   }
 }
 function render() {
-  document.querySelectorAll("#status-tabs .seg-tab").forEach((el) => {
+  document.querySelectorAll("#status-tabs .props-tab").forEach((el) => {
     el.classList.toggle("active", el.dataset.status === statusFilter);
   });
-  document.getElementById("view-list")?.classList.toggle("active", view === "list");
-  document.getElementById("view-grid")?.classList.toggle("active", view === "grid");
-  document.getElementById("view-list")?.setAttribute("aria-pressed", String(view === "list"));
-  document.getElementById("view-grid")?.setAttribute("aria-pressed", String(view === "grid"));
+  updateHeadline();
   const rows = visibleRows();
   const list = document.getElementById("property-list");
   list.innerHTML = renderList(rows);
@@ -1088,16 +1083,6 @@ document.getElementById("sort-by")?.addEventListener("change", (event) => {
 });
 document.getElementById("property-search")?.addEventListener("input", (event) => {
   search = event.target.value;
-  render();
-});
-document.getElementById("view-list")?.addEventListener("click", () => {
-  view = "list";
-  sessionStorage.setItem(VIEW_KEY, view);
-  render();
-});
-document.getElementById("view-grid")?.addEventListener("click", () => {
-  view = "grid";
-  sessionStorage.setItem(VIEW_KEY, view);
   render();
 });
 void loadProperties();

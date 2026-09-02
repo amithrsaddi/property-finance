@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "npm --prefix webclient run build",
+    "dev:all": "concurrently -n backend,frontend -c cyan,magenta \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "npm --prefix webclient run dev",
     "dev:backend": "npm --prefix backend run dev",
     "typecheck": "npm --prefix webclient run typecheck && npm --prefix backend run typecheck"
@@ -21,6 +22,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.6.0",
+    "concurrently": "^9.2.1",
     "typescript": "^6.0.2"
   }
 }

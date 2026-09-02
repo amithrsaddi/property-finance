@@ -203,12 +203,53 @@ export function extraCell(extra: ListExtra): string {
   </div>`;
 }
 
+export const ICON_PLUS = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>`;
+export const ICON_SORT = `<svg class="props-sort-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 7v10M8 7l-2.4 2.4M8 7l2.4 2.4M16 17V7M16 17l-2.4-2.4M16 17l2.4-2.4"/></svg>`;
+export const ICON_CHEVRON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>`;
+export const ICON_SEARCH = `<svg class="props-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>`;
+
+export function addButtonHtml(id: string, label: string): string {
+  return `<button class="btn props-add" id="${escapeHtml(id)}" type="button">${ICON_PLUS}${escapeHtml(label)}</button>`;
+}
+
+export function setPageSubtitle(text: string): void {
+  const el = document.querySelector(".main .topbar p");
+  if (el) {
+    el.textContent = text;
+  }
+}
+
+export function compactCurrency(amount: number, currency: string): string {
+  const abs = Math.abs(amount);
+  let value = amount;
+  let suffix = "";
+  if (abs >= 1_000_000) {
+    value = amount / 1_000_000;
+    suffix = "m";
+  } else if (abs >= 10_000) {
+    value = amount / 1_000;
+    suffix = "k";
+  }
+  const digits = suffix && Math.abs(value) < 10 ? 2 : 0;
+  try {
+    const formatted = new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits
+    }).format(value);
+    return suffix ? `${formatted}${suffix}` : formatted;
+  } catch {
+    return String(Math.round(amount || 0));
+  }
+}
+
 export function kebabMenu(id: string, open: boolean, itemsHtml: string): string {
   if (!itemsHtml.trim()) {
     return "";
   }
   return `<div class="row-menu ${open ? "open" : ""}">
-    <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">⋯</button>
+    <button class="kebab-btn props-item-more" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">${ICON_CHEVRON}</button>
     <div class="row-menu-pop"${open ? "" : " hidden"}>${itemsHtml}</div>
   </div>`;
 }
@@ -224,17 +265,18 @@ export function viewToggleHtml(view: ListViewMode): string {
   </div>`;
 }
 
-export function searchFieldHtml(id = "list-search"): string {
-  return `<label class="search-field">
-    <span class="sr-only">Search</span>
-    <input id="${id}" type="search" placeholder="Search" />
-    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>
+export function searchFieldHtml(id = "list-search", placeholder = "Search"): string {
+  return `<label class="props-search">
+    <span class="sr-only">${escapeHtml(placeholder)}</span>
+    ${ICON_SEARCH}
+    <input id="${id}" type="search" placeholder="${escapeHtml(placeholder)}" />
   </label>`;
 }
 
 export function sortFieldHtml(options: Array<{ value: string; label: string }>, id = "sort-by"): string {
-  return `<label class="sort-field">
-    <span>Sort by</span>
+  return `<label class="props-sort">
+    <span class="sr-only">Sort by</span>
+    ${ICON_SORT}
     <select id="${id}">
       ${options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join("")}
     </select>
@@ -247,144 +289,84 @@ export type ListRenderOptions = {
 
 export function renderDataList(
   rows: ListRow[],
-  view: ListViewMode,
+  _view: ListViewMode,
   empty: string,
   openMenuId: string | null,
   options?: ListRenderOptions
 ): string {
   if (!rows.length) {
-    return `<p class="empty">${empty}</p>`;
+    return `<div class="props-board"><p class="props-empty">${empty}</p></div>`;
   }
   const selectedIds = options?.selectedIds;
   const selectable = Boolean(selectedIds);
-  const selectCell = (row: ListRow) => {
-    if (!selectable || !selectedIds) {
-      return "";
-    }
-    const checked = selectedIds.has(row.id);
-    return `<label class="row-check">
-      <span class="sr-only">Select ${escapeHtml(row.title)}</span>
-      <input type="checkbox" data-select="${escapeHtml(row.id)}"${checked ? " checked" : ""} />
-    </label>`;
-  };
-  const allSelected = selectable && rows.length > 0 && rows.every((row) => selectedIds!.has(row.id));
+  const allSelected = selectable && rows.every((row) => selectedIds!.has(row.id));
   const someSelected = selectable && rows.some((row) => selectedIds!.has(row.id));
-  const hasActions = rows.some((row) => Boolean(row.actions));
-  const extraHeaders = rows[0]?.extras?.map((extra) => extra.header) ?? [];
-  const hasExtras = extraHeaders.length > 0;
-  const cells = (row: ListRow) => {
-    const actions = kebabMenu(row.id, openMenuId === row.id, row.actions || "");
-    return {
-      name: nameCell(row.title, row.subtitle, row.href, row),
-      status: statusPill(row.status, row.statusLabel),
-      summary: summaryCell(row.summaryTitle, row.summarySub),
-      extras: extraHeaders.map((header, index) => {
-        const extra = row.extras?.[index] || { header, title: "—" };
-        return extraCell(extra);
-      }),
-      actions
-    };
-  };
-  if (view === "grid") {
-    return `<div class="property-grid">${rows
-      .map((row) => {
-        const cell = cells(row);
-        const extras = hasExtras
-          ? `<div class="card-extras">${extraHeaders
-              .map((header, index) => {
-                const extra = row.extras?.[index] || { header, title: "—" };
-                return `<div class="card-extra">
-                  <div class="name-sub">${escapeHtml(header)}</div>
-                  <div class="name-title">${escapeHtml(extra.title)}</div>
-                  ${extra.subtitle ? `<div class="name-sub">${escapeHtml(extra.subtitle)}</div>` : ""}
-                </div>`;
-              })
-              .join("")}</div>`
-          : cell.summary;
-        return `<article class="property-card">
-          <div class="property-card-head">
-            ${selectCell(row)}
-            ${cell.name}
-            ${hasActions ? cell.actions : ""}
+  const selectAll = selectable
+    ? `<div class="props-select-bar">
+        <label class="row-check">
+          <input type="checkbox" data-select-all${allSelected ? " checked" : ""}${
+            someSelected && !allSelected ? ' data-indeterminate="true"' : ""
+          } />
+          <span>Select page</span>
+        </label>
+      </div>`
+    : "";
+  const items = rows
+    .map((row) => {
+      const checked = Boolean(selectedIds?.has(row.id));
+      const select = selectable
+        ? `<label class="row-check">
+            <span class="sr-only">Select ${escapeHtml(row.title)}</span>
+            <input type="checkbox" data-select="${escapeHtml(row.id)}"${checked ? " checked" : ""} />
+          </label>`
+        : "";
+      const mainTag = row.href ? "a" : "div";
+      const hrefAttr = row.href ? ` href="${escapeHtml(row.href)}"` : "";
+      return `<article class="props-item">
+        ${select}
+        <${mainTag} class="props-item-main"${hrefAttr}>
+          ${propertyThumbHtml(String(row.propertyId || ""), Boolean(row.hasImage))}
+          <div class="props-item-copy">
+            <div class="props-item-title">
+              <strong>${escapeHtml(row.title)}</strong>
+              ${statusPill(row.status, row.statusLabel)}
+            </div>
+            ${row.subtitle ? `<p class="props-item-address">${escapeHtml(row.subtitle)}</p>` : ""}
           </div>
-          <div class="property-card-meta">
-            <div class="card-status">${cell.status}</div>
-            ${extras}
+          <div class="props-item-figures">
+            <strong>${escapeHtml(row.summaryTitle || "—")}</strong>
+            ${row.summarySub ? `<span>${escapeHtml(row.summarySub)}</span>` : ""}
           </div>
-        </article>`;
-      })
-      .join("")}</div>`;
-  }
-  return `<div class="data-table-wrap">
-    <table class="data-table${hasExtras ? " has-extras" : ""}${selectable ? " has-select" : ""}">
-      <thead>
-        <tr>
-          ${
-            selectable
-              ? `<th class="col-check"><label class="row-check">
-                  <span class="sr-only">Select all</span>
-                  <input type="checkbox" data-select-all${allSelected ? " checked" : ""}${
-                    someSelected && !allSelected ? " data-indeterminate=\"true\"" : ""
-                  } />
-                </label></th>`
-              : ""
-          }
-          <th>Name</th>
-          <th>Status</th>
-          ${
-            hasExtras
-              ? extraHeaders.map((header) => `<th>${escapeHtml(header)}</th>`).join("")
-              : "<th>Summary</th>"
-          }
-          ${hasActions ? `<th class="col-actions">Actions</th>` : ""}
-        </tr>
-      </thead>
-      <tbody>
-        ${rows
-          .map((row) => {
-            const cell = cells(row);
-            const extraTds = hasExtras
-              ? cell.extras
-                  .map(
-                    (html, index) =>
-                      `<td class="col-extra" data-label="${escapeHtml(extraHeaders[index] || "")}">${html}</td>`
-                  )
-                  .join("")
-              : `<td class="col-summary">${cell.summary}</td>`;
-            return `<tr>
-              ${selectable ? `<td class="col-check">${selectCell(row)}</td>` : ""}
-              <td class="col-name">${cell.name}</td>
-              <td class="col-status">${cell.status}</td>
-              ${extraTds}
-              ${hasActions ? `<td class="col-actions">${cell.actions}</td>` : ""}
-            </tr>`;
-          })
-          .join("")}
-      </tbody>
-    </table>
-  </div>`;
+        </${mainTag}>
+        ${kebabMenu(row.id, openMenuId === row.id, row.actions || "")}
+      </article>`;
+    })
+    .join("");
+  return `<div class="props-board">${selectAll}${items}</div>`;
 }
 
 export function bindListChrome(options: {
-  view: ListViewMode;
-  onView: (view: ListViewMode) => void;
+  view?: ListViewMode;
+  onView?: (view: ListViewMode) => void;
   onSearch: (value: string) => void;
   onSort?: (value: string) => void;
   searchId?: string;
   sortId?: string;
 }): void {
-  document.querySelectorAll<HTMLButtonElement>("[data-view-mode]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.viewMode === options.view);
-    button.setAttribute("aria-pressed", String(button.dataset.viewMode === options.view));
-    button.addEventListener("click", () => {
-      const next = button.dataset.viewMode === "grid" ? "grid" : "list";
-      document.querySelectorAll<HTMLButtonElement>("[data-view-mode]").forEach((btn) => {
-        btn.classList.toggle("active", btn.dataset.viewMode === next);
-        btn.setAttribute("aria-pressed", String(btn.dataset.viewMode === next));
+  if (options.onView) {
+    document.querySelectorAll<HTMLButtonElement>("[data-view-mode]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.viewMode === options.view);
+      button.setAttribute("aria-pressed", String(button.dataset.viewMode === options.view));
+      button.addEventListener("click", () => {
+        const next = button.dataset.viewMode === "grid" ? "grid" : "list";
+        document.querySelectorAll<HTMLButtonElement>("[data-view-mode]").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.viewMode === next);
+          btn.setAttribute("aria-pressed", String(btn.dataset.viewMode === next));
+        });
+        options.onView!(next);
       });
-      options.onView(next);
     });
-  });
+  }
   document.getElementById(options.searchId || "list-search")?.addEventListener("input", (event) => {
     options.onSearch((event.target as HTMLInputElement).value);
   });

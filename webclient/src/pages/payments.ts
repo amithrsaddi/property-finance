@@ -1,54 +1,47 @@
 import { api, formatDateDmY, getUser, money, qs, labelize } from "../lib.js";
 import {
+  addButtonHtml,
   bindListChrome,
   bindRowMenus,
+  compactCurrency,
   escapeHtml,
   matchesQuery,
   renderDataList,
   searchFieldHtml,
-  sortFieldHtml,
-  viewToggleHtml,
-  storedListView,
-  type ListViewMode
+  setPageSubtitle,
+  sortFieldHtml
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
-const VIEW_KEY = "pf-payments-view-v2";
 const PAGE_SIZE = 10;
 const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
-let view: ListViewMode = storedListView(VIEW_KEY, "list");
 const root = mountShell(
   "/payments",
   "Payments",
-  "Upcoming, current, and past mortgage payments.",
-  `<button class="btn" id="add-payment-btn" type="button">+ Add Mortgage Payment</button>`
+  "Loading payments…",
+  addButtonHtml("add-payment-btn", "Add payment")
 );
 
 root.innerHTML = `
-  <section class="panel table-card">
-    <div class="table-toolbar">
-      <div class="table-toolbar-start">
-        <div class="seg-tabs" id="view-tabs">
-          <button class="seg-tab active" data-view="upcoming" type="button">Upcoming</button>
-          <button class="seg-tab" data-view="current" type="button">Current</button>
-          <button class="seg-tab" data-view="past" type="button">Past</button>
-        </div>
-        <div class="table-filters">
-          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
-          <div class="field"><label>Year</label><select id="filterYear"><option value="">All</option></select></div>
-        </div>
+  <section class="props-page">
+    <div class="props-toolbar">
+      <div class="props-tabs" id="view-tabs" role="group" aria-label="Payment view">
+        <button class="props-tab active" data-view="upcoming" type="button">Upcoming</button>
+        <button class="props-tab" data-view="current" type="button">Current</button>
+        <button class="props-tab" data-view="past" type="button">Past</button>
       </div>
-      <div class="table-toolbar-end">
-        ${sortFieldHtml([
-          { value: "due", label: "Due date" },
-          { value: "name", label: "Name" },
-          { value: "amount", label: "Amount" }
-        ])}
-        ${searchFieldHtml()}
-        ${viewToggleHtml(view)}
-      </div>
+      ${sortFieldHtml([
+        { value: "due", label: "Due date" },
+        { value: "name", label: "Name" },
+        { value: "amount", label: "Amount" }
+      ])}
     </div>
+    <div class="props-filters">
+      <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+      <div class="field"><label>Year</label><select id="filterYear"><option value="">All</option></select></div>
+    </div>
+    ${searchFieldHtml("list-search", "Search payments")}
     <div class="status" id="status" hidden></div>
     <div id="content"></div>
   </section>
@@ -351,55 +344,46 @@ function render(): void {
   if (!views) {
     return;
   }
-  document.querySelectorAll("#view-tabs .seg-tab").forEach((el) => {
+  document.querySelectorAll("#view-tabs .props-tab").forEach((el) => {
     el.classList.toggle("active", (el as HTMLElement).dataset.view === activeView);
   });
   const content = document.getElementById("content")!;
 
   const source = views[activeView];
   const rows = sortRows(source, ["property_name", "lender", "status", "notes", "due_date", "paid_date"]);
+  const totalDue = rows.reduce((sum, row) => sum + Number(row.expected_amount || 0), 0);
+  const noun = rows.length === 1 ? "payment" : "payments";
+  setPageSubtitle(
+    rows.length
+      ? `${rows.length} ${activeView} ${noun}, ${compactCurrency(totalDue, user.preferredCurrency)} expected`
+      : `No ${activeView} payments`
+  );
   clampPage(rows.length);
   const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   content.innerHTML = `${bulkBarHtml()}${renderDataList(
     pageRows.map((r) => {
       const id = String(r.id || r._id);
       const status = String(r.status || "upcoming");
+      const due = r.due_date ? formatDateDmY(String(r.due_date)) : "—";
+      const paid =
+        r.amount_paid != null ? `Paid ${money(Number(r.amount_paid), user.preferredCurrency)}` : "Unpaid";
       return {
         id,
         title: String(r.property_name || "Property"),
-        subtitle: "",
+        subtitle: `${r.lender || "Lender"} · Due ${due}`,
         href: r.property_id ? `/property?id=${r.property_id}` : undefined,
         propertyId: r.property_id ? String(r.property_id) : undefined,
         hasImage: Boolean(r.hasImage),
         status,
         statusLabel: labelize(status),
-        summaryTitle: "",
-        summarySub: "",
-        extras: [
-          {
-            header: "Lender",
-            title: String(r.lender || "—")
-          },
-          {
-            header: "Due date",
-            title: r.due_date ? formatDateDmY(String(r.due_date)) : "—"
-          },
-          {
-            header: "Expected",
-            title: money(Number(r.expected_amount), user.preferredCurrency)
-          },
-          {
-            header: "Paid",
-            title:
-              r.amount_paid != null ? money(Number(r.amount_paid), user.preferredCurrency) : "—"
-          }
-        ],
+        summaryTitle: money(Number(r.expected_amount), user.preferredCurrency),
+        summarySub: paid,
         actions: `<button type="button" data-edit="${id}" data-mode="edit">Edit</button>${
           status === "paid" ? "" : `<button type="button" data-edit="${id}" data-mode="pay">Mark paid</button>`
         }`
       };
     }),
-    view,
+    "list",
     "No payments in this view.",
     openMenuId,
     { selectedIds }
@@ -653,12 +637,6 @@ document.getElementById("filterYear")?.addEventListener("change", () => {
 });
 
 bindListChrome({
-  view,
-  onView: (next) => {
-    view = next;
-    sessionStorage.setItem(VIEW_KEY, view);
-    render();
-  },
   onSearch: (value) => {
     search = value;
     resetPage();

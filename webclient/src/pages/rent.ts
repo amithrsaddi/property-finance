@@ -1,26 +1,22 @@
 import { api, currentMonthValue, formatDateDmY, formatMonthYear, getUser, money, qs, labelize } from "../lib.js";
 import {
+  addButtonHtml,
   bindListChrome,
   bindRowMenus,
+  compactCurrency,
   matchesQuery,
   renderDataList,
   searchFieldHtml,
-  sortFieldHtml,
-  viewToggleHtml,
-  storedListView,
-  type ListViewMode
+  setPageSubtitle,
+  sortFieldHtml
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
-const VIEW_KEY = "pf-rent-view-v2";
 const root = mountShell(
   "/rent",
   "Rent",
-  "Track expected and received rental payments.",
-  `<div class="actions">
-    <button class="btn secondary" id="recurring-rent-btn" type="button">Recurring rent</button>
-    <button class="btn" id="add-rent-btn" type="button">+ Add Rent</button>
-  </div>`
+  "Loading rent…",
+  `<button class="btn secondary" id="recurring-rent-btn" type="button">Recurring rent</button>${addButtonHtml("add-rent-btn", "Add rent")}`
 );
 const user = getUser()!;
 const presetPropertyId = new URLSearchParams(window.location.search).get("propertyId") || "";
@@ -29,44 +25,37 @@ let editingId: string | null = null;
 let cache: Array<Record<string, unknown>> = [];
 let search = "";
 let sortBy = "due";
-let view: ListViewMode = storedListView(VIEW_KEY, "list");
 let openMenuId: string | null = null;
 
 root.innerHTML = `
-  <section class="panel table-card">
-    <div class="table-toolbar">
-      <div class="table-toolbar-start">
-        <div class="table-filters">
-          <div class="field">
-            <label>Period</label>
-            <select id="periodType">
-              <option value="month" selected>Month</option>
-              <option value="year">Year</option>
-            </select>
-          </div>
-          <div class="field" id="month-filter-wrap">
-            <label>Month</label>
-            <input id="month" type="month" value="${currentMonthValue()}" />
-          </div>
-          <div class="field" id="year-filter-wrap" hidden>
-            <label>Year</label>
-            <input id="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" />
-          </div>
-          <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
+  <section class="props-page">
+    <div class="props-toolbar">
+      <div class="props-filters">
+        <div class="field">
+          <label>Period</label>
+          <select id="periodType">
+            <option value="month" selected>Month</option>
+            <option value="year">Year</option>
+          </select>
         </div>
+        <div class="field" id="month-filter-wrap">
+          <label>Month</label>
+          <input id="month" type="month" value="${currentMonthValue()}" />
+        </div>
+        <div class="field" id="year-filter-wrap" hidden>
+          <label>Year</label>
+          <input id="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" />
+        </div>
+        <div class="field"><label>Property</label><select id="filterProperty"><option value="">All</option></select></div>
       </div>
-      <div class="table-toolbar-end">
-        ${sortFieldHtml([
-          { value: "due", label: "Due date" },
-          { value: "name", label: "Name" },
-          { value: "amount", label: "Amount" }
-        ])}
-        ${searchFieldHtml()}
-        ${viewToggleHtml(view)}
-      </div>
+      ${sortFieldHtml([
+        { value: "due", label: "Due date" },
+        { value: "name", label: "Name" },
+        { value: "amount", label: "Amount" }
+      ])}
     </div>
+    ${searchFieldHtml("list-search", "Search rent")}
     <div class="status" id="status" hidden></div>
-    <div id="totals" class="metrics table-metrics"></div>
     <div id="list"></div>
   </section>
 
@@ -297,20 +286,20 @@ function renderList(): void {
       return {
         id,
         title: String(row.property_name || "Property"),
-        subtitle: `Period ${formatMonthYear(String(row.rental_period || ""))} · Due ${formatDateDmY(String(row.expected_payment_date || ""))}`,
+        subtitle: `${formatMonthYear(String(row.rental_period || ""))} · Due ${formatDateDmY(String(row.expected_payment_date || ""))}`,
         href: row.property_id ? `/property?id=${row.property_id}` : undefined,
         propertyId: row.property_id ? String(row.property_id) : undefined,
         hasImage: Boolean(row.hasImage),
         status,
         statusLabel: displayStatus(status),
-        summaryTitle: `Expected ${money(Number(row.expected_amount), user.preferredCurrency)}`,
+        summaryTitle: money(Number(row.expected_amount), user.preferredCurrency),
         summarySub: `Received ${money(Number(row.amount_received), user.preferredCurrency)}`,
         actions: `<button type="button" data-edit="${id}">Edit</button>${
           status === "paid" ? "" : `<button type="button" data-mark-paid="${id}">Mark paid</button>`
         }<button type="button" data-delete="${id}">Delete</button>`
       };
     }),
-    view,
+    "list",
     "No rent records for this period.",
     openMenuId
   );
@@ -374,11 +363,14 @@ async function loadRent(): Promise<void> {
     totals: { expected: number; received: number };
   }>(`/rent${query}`);
 
-  document.getElementById("totals")!.innerHTML = `
-    <div class="metric"><div class="label">Expected</div><div class="value">${money(data.totals.expected, user.preferredCurrency)}</div></div>
-    <div class="metric"><div class="label">Received</div><div class="value">${money(data.totals.received, user.preferredCurrency)}</div></div>
-  `;
   cache = data.rentPayments;
+  const count = cache.length;
+  const noun = count === 1 ? "record" : "records";
+  setPageSubtitle(
+    count
+      ? `${count} ${noun}, ${compactCurrency(data.totals.expected, user.preferredCurrency)} expected · ${compactCurrency(data.totals.received, user.preferredCurrency)} received`
+      : "No rent records for this period"
+  );
   renderList();
 }
 
@@ -555,12 +547,6 @@ document.getElementById("year")?.addEventListener("change", () => {
 });
 
 bindListChrome({
-  view,
-  onView: (next) => {
-    view = next;
-    sessionStorage.setItem(VIEW_KEY, view);
-    renderList();
-  },
   onSearch: (value) => {
     search = value;
     renderList();

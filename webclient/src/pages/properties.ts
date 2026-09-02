@@ -5,21 +5,24 @@ import {
   forgetPropertyThumb,
   hydratePropertyThumbs,
   positionOpenRowMenu,
-  propertyThumbHtml,
-  storedListView
+  propertyThumbHtml
 } from "../list-view.js";
 import { mountShell, setStatus } from "../shell.js";
 
-const VIEW_KEY = "pf-properties-view-v2";
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp";
 const user = getUser()!;
 
+const PLUS_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>`;
+const SORT_ICON = `<svg class="props-sort-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 7v10M8 7l-2.4 2.4M8 7l2.4 2.4M16 17V7M16 17l-2.4-2.4M16 17l2.4-2.4"/></svg>`;
+const CHEVRON_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>`;
+const SEARCH_ICON = `<svg class="props-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>`;
+
 const root = mountShell(
   "/properties",
   "Properties",
-  "Manage your property portfolio.",
-  `<button class="btn" id="add-property-btn" type="button">+ Add Property</button>`
+  "Loading properties…",
+  `<button class="btn props-add" id="add-property-btn" type="button">${PLUS_ICON}Add property</button>`
 );
 
 let editingId: string | null = null;
@@ -27,47 +30,38 @@ let cache: Array<Record<string, unknown>> = [];
 let statusFilter: "all" | "archived" = "all";
 let sortBy: "newest" | "name" | "value" | "rent" = "newest";
 let search = "";
-let view: "list" | "grid" = storedListView(VIEW_KEY, "grid");
 let openMenuId: string | null = null;
 let selectedImage: File | null = null;
 let removeImage = false;
 let previewObjectUrl: string | null = null;
 
 root.innerHTML = `
-  <section class="panel table-card">
-    <div class="table-toolbar">
-      <div class="seg-tabs" id="status-tabs">
-        <button class="seg-tab active" data-status="all" type="button">All properties</button>
-        <button class="seg-tab" data-status="archived" type="button">Archived</button>
+  <section class="props-page">
+    <div class="props-toolbar">
+      <div class="props-tabs" id="status-tabs" role="group" aria-label="Property status">
+        <button class="props-tab active" data-status="all" type="button">All</button>
+        <button class="props-tab" data-status="archived" type="button">Archived</button>
       </div>
-      <div class="table-toolbar-end">
-        <label class="sort-field">
-          <span>Sort by</span>
-          <select id="sort-by">
-            <option value="newest">Newest</option>
-            <option value="name">Name</option>
-            <option value="value">Value</option>
-            <option value="rent">Rent</option>
-          </select>
-        </label>
-        <label class="search-field">
-          <span class="sr-only">Search</span>
-          <input id="property-search" type="search" placeholder="Search" />
-          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>
-        </label>
-        <div class="view-toggle" role="group" aria-label="View">
-          <button class="view-btn${view === "list" ? " active" : ""}" id="view-list" type="button" aria-label="List view" aria-pressed="${view === "list"}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
-          </button>
-          <button class="view-btn${view === "grid" ? " active" : ""}" id="view-grid" type="button" aria-label="Grid view" aria-pressed="${view === "grid"}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
-          </button>
-        </div>
-      </div>
+      <label class="props-sort">
+        <span class="sr-only">Sort by</span>
+        ${SORT_ICON}
+        <select id="sort-by">
+          <option value="newest">Newest</option>
+          <option value="name">Name</option>
+          <option value="value">Value</option>
+          <option value="rent">Rent</option>
+        </select>
+      </label>
     </div>
+    <label class="props-search">
+      <span class="sr-only">Search by address</span>
+      ${SEARCH_ICON}
+      <input id="property-search" type="search" placeholder="Search by address" />
+    </label>
     <div class="status" id="status" hidden></div>
-    <div id="property-list"></div>
+    <div class="props-board" id="property-list"></div>
   </section>
+
 
   <div class="modal-backdrop" id="property-modal" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="form-title">
@@ -138,6 +132,47 @@ function escapeHtml(value: unknown): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function compactCurrency(amount: number): string {
+  const abs = Math.abs(amount);
+  let value = amount;
+  let suffix = "";
+  if (abs >= 1_000_000) {
+    value = amount / 1_000_000;
+    suffix = "m";
+  } else if (abs >= 10_000) {
+    value = amount / 1_000;
+    suffix = "k";
+  }
+  const digits = suffix && Math.abs(value) < 10 ? 2 : 0;
+  try {
+    const formatted = new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: user.preferredCurrency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits
+    }).format(value);
+    return suffix ? `${formatted}${suffix}` : formatted;
+  } catch {
+    return `${(amount || 0).toFixed(0)}`;
+  }
+}
+
+function updateHeadline(): void {
+  const el = document.querySelector(".main .topbar p");
+  if (!el) {
+    return;
+  }
+  const count = cache.length;
+  const total = cache.reduce((sum, row) => sum + Number(row.currentValue || 0), 0);
+  const noun = count === 1 ? "property" : "properties";
+  if (!count) {
+    el.textContent = statusFilter === "archived" ? "No archived properties" : "No properties";
+    return;
+  }
+  const prefix = statusFilter === "archived" ? `${count} archived ${noun}` : `${count} ${noun}`;
+  el.textContent = `${prefix}, ${compactCurrency(total)} portfolio value`;
 }
 
 function createdTime(row: Record<string, unknown>): number {
@@ -302,26 +337,12 @@ function statusBadge(status: string): string {
   return `<span class="pill ${archived ? "paused" : "done"}">${archived ? "Archived" : "Active"}</span>`;
 }
 
-function nameCell(row: Record<string, unknown>): string {
-  const name = String(row.name || "Untitled");
-  const id = String(row.id);
-  return `<div class="name-cell">
-    ${propertyThumbHtml(id, Boolean(row.hasImage))}
-    <div>
-      <a class="name-title" href="/property?id=${escapeHtml(id)}">${escapeHtml(name)}</a>
-      <div class="name-sub">${escapeHtml(row.address || "No address")}</div>
-    </div>
-  </div>`;
-}
-
-function summaryCell(row: Record<string, unknown>): string {
-  const type = labelize(String(row.propertyType || "residential"));
-  const rent = money(Number(row.expectedMonthlyRent || 0), user.preferredCurrency);
-  const value = money(Number(row.currentValue || 0), user.preferredCurrency);
-  return `<div class="summary-cell">
-    <div class="name-title">${escapeHtml(type)}</div>
-    <div class="name-sub">Rent ${escapeHtml(rent)} · Value ${escapeHtml(value)}</div>
-  </div>`;
+function figureLine(row: Record<string, unknown>): string {
+  const rent = Number(row.expectedMonthlyRent || 0);
+  if (rent > 0) {
+    return `${money(rent, user.preferredCurrency)}/mo rent`;
+  }
+  return labelize(String(row.propertyType || "residential"));
 }
 
 function actionMenu(row: Record<string, unknown>): string {
@@ -329,7 +350,7 @@ function actionMenu(row: Record<string, unknown>): string {
   const open = openMenuId === id;
   const archived = row.status === "archived";
   return `<div class="row-menu ${open ? "open" : ""}">
-    <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">⋯</button>
+    <button class="kebab-btn props-item-more" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">${CHEVRON_ICON}</button>
     <div class="row-menu-pop"${open ? "" : " hidden"}>
       <a href="/property?id=${escapeHtml(id)}">Open</a>
       <button type="button" data-edit="${escapeHtml(id)}">Edit</button>
@@ -344,48 +365,33 @@ function actionMenu(row: Record<string, unknown>): string {
 
 function renderList(rows: Array<Record<string, unknown>>): string {
   if (!rows.length) {
-    return `<p class="empty">No properties found. Use + Add Property to create one.</p>`;
+    return `<p class="props-empty">No properties found. Use Add property to create one.</p>`;
   }
-  if (view === "grid") {
-    return `<div class="property-grid">${rows
-      .map(
-        (row) => `<article class="property-card">
-          <div class="property-card-head">
-            ${nameCell(row)}
-            ${actionMenu(row)}
+  return rows
+    .map((row) => {
+      const id = String(row.id);
+      const name = String(row.name || "Untitled");
+      const address = String(row.address || "No address");
+      const value = money(Number(row.currentValue || 0), user.preferredCurrency);
+      return `<article class="props-item">
+        <a class="props-item-main" href="/property?id=${escapeHtml(id)}">
+          ${propertyThumbHtml(id, Boolean(row.hasImage))}
+          <div class="props-item-copy">
+            <div class="props-item-title">
+              <strong>${escapeHtml(name)}</strong>
+              ${statusBadge(String(row.status))}
+            </div>
+            <p class="props-item-address">${escapeHtml(address)}</p>
           </div>
-          <div class="property-card-meta">
-            <div class="card-status">${statusBadge(String(row.status))}</div>
-            ${summaryCell(row)}
+          <div class="props-item-figures">
+            <strong>${escapeHtml(value)}</strong>
+            <span>${escapeHtml(figureLine(row))}</span>
           </div>
-        </article>`
-      )
-      .join("")}</div>`;
-  }
-  return `<div class="data-table-wrap">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Status</th>
-          <th>Summary</th>
-          <th class="col-actions">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows
-          .map(
-            (row) => `<tr>
-              <td class="col-name">${nameCell(row)}</td>
-              <td class="col-status">${statusBadge(String(row.status))}</td>
-              <td class="col-summary">${summaryCell(row)}</td>
-              <td class="col-actions">${actionMenu(row)}</td>
-            </tr>`
-          )
-          .join("")}
-      </tbody>
-    </table>
-  </div>`;
+        </a>
+        ${actionMenu(row)}
+      </article>`;
+    })
+    .join("");
 }
 
 function bindListActions(rows: Array<Record<string, unknown>>): void {
@@ -459,13 +465,10 @@ function bindListActions(rows: Array<Record<string, unknown>>): void {
 }
 
 function render(): void {
-  document.querySelectorAll("#status-tabs .seg-tab").forEach((el) => {
+  document.querySelectorAll("#status-tabs .props-tab").forEach((el) => {
     el.classList.toggle("active", (el as HTMLElement).dataset.status === statusFilter);
   });
-  document.getElementById("view-list")?.classList.toggle("active", view === "list");
-  document.getElementById("view-grid")?.classList.toggle("active", view === "grid");
-  document.getElementById("view-list")?.setAttribute("aria-pressed", String(view === "list"));
-  document.getElementById("view-grid")?.setAttribute("aria-pressed", String(view === "grid"));
+  updateHeadline();
   const rows = visibleRows();
   const list = document.getElementById("property-list")!;
   list.innerHTML = renderList(rows);
@@ -596,16 +599,6 @@ document.getElementById("sort-by")?.addEventListener("change", (event) => {
 });
 document.getElementById("property-search")?.addEventListener("input", (event) => {
   search = (event.target as HTMLInputElement).value;
-  render();
-});
-document.getElementById("view-list")?.addEventListener("click", () => {
-  view = "list";
-  sessionStorage.setItem(VIEW_KEY, view);
-  render();
-});
-document.getElementById("view-grid")?.addEventListener("click", () => {
-  view = "grid";
-  sessionStorage.setItem(VIEW_KEY, view);
   render();
 });
 

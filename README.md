@@ -7,25 +7,20 @@ Property finance management app for landlords and property owners.
 
 ## Quick start
 
-Terminal 1:
+From the repo root:
 
 ```bash
-cd backend
-cp .env.example .env
-# set MONGODB_URI
 npm install
-npm run dev
+npm --prefix backend install
+npm --prefix webclient install
+cp backend/.env.example backend/.env
+# set MONGODB_URI in backend/.env
+npm run dev:all
 ```
 
-Terminal 2:
+That starts the API on [http://localhost:3000](http://localhost:3000) and the UI on [http://localhost:5173](http://localhost:5173).
 
-```bash
-cd webclient
-npm install
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173).
+To run them separately: `npm run dev:backend` and `npm run dev:frontend`.
 
 ## Deploy on Netlify
 

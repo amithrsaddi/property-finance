@@ -163,12 +163,14 @@ async function hydratePropertyThumbs(root2) {
     })
   );
 }
+var ICON_CHEVRON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>`;
+var ICON_SEARCH = `<svg class="props-search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>`;
 function kebabMenu(id, open, itemsHtml) {
   if (!itemsHtml.trim()) {
     return "";
   }
   return `<div class="row-menu ${open ? "open" : ""}">
-    <button class="kebab-btn" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">\u22EF</button>
+    <button class="kebab-btn props-item-more" data-menu="${escapeHtml(id)}" type="button" aria-label="Actions" aria-expanded="${open}">${ICON_CHEVRON}</button>
     <div class="row-menu-pop"${open ? "" : " hidden"}>${itemsHtml}</div>
   </div>`;
 }
@@ -182,11 +184,11 @@ function viewToggleHtml(view) {
     </button>
   </div>`;
 }
-function searchFieldHtml(id = "list-search") {
-  return `<label class="search-field">
-    <span class="sr-only">Search</span>
-    <input id="${id}" type="search" placeholder="Search" />
-    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16.2 16.2 21 21"/></svg>
+function searchFieldHtml(id = "list-search", placeholder = "Search") {
+  return `<label class="props-search">
+    <span class="sr-only">${escapeHtml(placeholder)}</span>
+    ${ICON_SEARCH}
+    <input id="${id}" type="search" placeholder="${escapeHtml(placeholder)}" />
   </label>`;
 }
 function positionOpenRowMenu(root2 = document) {
@@ -262,7 +264,7 @@ var ICON_MOON_GLYPH = icon(
 var ICON_USER = icon(
   '<circle cx="12" cy="8" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5 19.2c.8-3.2 3.5-5 7-5s6.2 1.8 7 5"/>'
 );
-var ICON_CHEVRON = icon(
+var ICON_CHEVRON2 = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/>',
   "nav-chevron"
 );
@@ -345,7 +347,7 @@ function renderNav(activePath) {
       return `<div class="nav-group${open ? " open" : ""}">
         <button class="nav-group-toggle${childActive ? " active" : ""}" id="mortgages-nav-toggle" type="button" aria-expanded="${open}" aria-controls="mortgages-nav-sub">
           <span class="nav-group-label">${item.icon}${item.label}</span>
-          ${ICON_CHEVRON}
+          ${ICON_CHEVRON2}
         </button>
         <div class="nav-sub" id="mortgages-nav-sub"${open ? "" : " hidden"}>
           ${item.children.map(
