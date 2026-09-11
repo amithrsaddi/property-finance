@@ -6,8 +6,9 @@ function apiBase() {
     return window.APP_CONFIG.apiBaseUrl;
   }
   const host = window.location.hostname;
-  if (host === "localhost" || host === "127.0.0.1") {
-    return "http://localhost:3000";
+  const local = host === "localhost" || host === "127.0.0.1" || host === "[::1]" || /^(10|192\.168|172\.(1[6-9]|2\d|3[0-1]))\./.test(host);
+  if (local) {
+    return `${window.location.protocol}//${host}:3000`;
   }
   return "/api";
 }
@@ -93,6 +94,9 @@ var ICON_RATES = icon(
 );
 var ICON_CALCULATOR = icon(
   '<rect x="4.5" y="3.5" width="15" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 8h8M8 12.2h.01M12 12.2h.01M16 12.2h.01M8 16.2h.01M12 16.2h.01M16 16.2h.01"/>'
+);
+var ICON_GAINS = icon(
+  '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 17.5 9.2 12l3.4 3.4L20 8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M14.5 8H20v5.5"/>'
 );
 var ICON_DOCUMENTS = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M7 3.5h7.2L19.5 9v11.5H7z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M14 3.5V9h5.5M9.5 13h6M9.5 16.5h6"/>'

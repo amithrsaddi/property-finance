@@ -7,8 +7,9 @@ function apiBase() {
     return window.APP_CONFIG.apiBaseUrl;
   }
   const host = window.location.hostname;
-  if (host === "localhost" || host === "127.0.0.1") {
-    return "http://localhost:3000";
+  const local = host === "localhost" || host === "127.0.0.1" || host === "[::1]" || /^(10|192\.168|172\.(1[6-9]|2\d|3[0-1]))\./.test(host);
+  if (local) {
+    return `${window.location.protocol}//${host}:3000`;
   }
   return "/api";
 }
@@ -397,7 +398,6 @@ function matchesQuery(row, query, keys) {
 }
 
 // src/shell.ts
-var MORTGAGES_NAV_KEY = "pf-mortgages-nav-open";
 function icon(path, className = "nav-icon") {
   return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
 }
@@ -446,6 +446,9 @@ var ICON_RATES = icon(
 var ICON_CALCULATOR = icon(
   '<rect x="4.5" y="3.5" width="15" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8 8h8M8 12.2h.01M12 12.2h.01M16 12.2h.01M8 16.2h.01M12 16.2h.01M16 16.2h.01"/>'
 );
+var ICON_GAINS = icon(
+  '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 17.5 9.2 12l3.4 3.4L20 8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M14.5 8H20v5.5"/>'
+);
 var ICON_DOCUMENTS = icon(
   '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M7 3.5h7.2L19.5 9v11.5H7z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M14 3.5V9h5.5M9.5 13h6M9.5 16.5h6"/>'
 );
@@ -470,43 +473,66 @@ var NAV = [
   { href: "/properties", label: "Properties", icon: ICON_PROPERTIES },
   { href: "/rent", label: "Rent", icon: ICON_RENT },
   {
+    id: "mortgages",
     label: "Mortgages",
     icon: ICON_MORTGAGES,
     children: [
       { href: "/payments", label: "Payments", icon: ICON_PAYMENTS },
-      { href: "/rates", label: "Rates", icon: ICON_RATES },
-      { href: "/calculator", label: "Calculator", icon: ICON_CALCULATOR }
+      { href: "/rates", label: "Rates", icon: ICON_RATES }
+    ]
+  },
+  {
+    id: "calculators",
+    label: "Calculators",
+    icon: ICON_CALCULATOR,
+    children: [
+      { href: "/calculator", label: "Mortgage", icon: ICON_CALCULATOR },
+      { href: "/capital-gains", label: "Capital Gains", icon: ICON_GAINS }
     ]
   },
   { href: "/expenses", label: "Expenses", icon: ICON_EXPENSES },
   { href: "/documents", label: "Documents", icon: ICON_DOCUMENTS },
   { href: "/reports", label: "Reports", icon: ICON_REPORTS }
 ];
-function isMortgagesPath(path) {
-  const current = pagePath(path);
-  return current === "/payments" || current === "/rates" || current === "/calculator";
+function navGroupStorageKey(id) {
+  return `pf-nav-open-${id}`;
 }
-function mortgagesNavOpen(activePath) {
-  if (isMortgagesPath(activePath)) {
+function isGroupChildActive(item, path) {
+  return Boolean(item.children?.some((child) => isActivePath(child.href, path)));
+}
+function navGroupOpen(item, activePath) {
+  if (isGroupChildActive(item, activePath)) {
     return true;
   }
-  try {
-    return sessionStorage.getItem(MORTGAGES_NAV_KEY) === "1";
-  } catch {
+  const id = item.id;
+  if (!id) {
     return false;
   }
+  try {
+    if (sessionStorage.getItem(navGroupStorageKey(id)) === "1") {
+      return true;
+    }
+    if (id === "mortgages" && sessionStorage.getItem("pf-mortgages-nav-open") === "1") {
+      return true;
+    }
+  } catch {
+  }
+  return false;
 }
 function renderNav(activePath) {
   return NAV.map((item) => {
     if (item.children?.length) {
-      const childActive = item.children.some((child) => isActivePath(child.href, activePath));
-      const open = mortgagesNavOpen(activePath);
+      const childActive = isGroupChildActive(item, activePath);
+      const open = navGroupOpen(item, activePath);
+      const groupId = item.id || item.label.toLowerCase().replace(/\s+/g, "-");
+      const toggleId = `${groupId}-nav-toggle`;
+      const subId = `${groupId}-nav-sub`;
       return `<div class="nav-group${open ? " open" : ""}">
-        <button class="nav-group-toggle${childActive ? " active" : ""}" id="mortgages-nav-toggle" type="button" aria-expanded="${open}" aria-controls="mortgages-nav-sub">
+        <button class="nav-group-toggle${childActive ? " active" : ""}" id="${toggleId}" data-nav-group="${groupId}" type="button" aria-expanded="${open}" aria-controls="${subId}">
           <span class="nav-group-label">${item.icon}${item.label}</span>
           ${ICON_CHEVRON2}
         </button>
-        <div class="nav-sub" id="mortgages-nav-sub"${open ? "" : " hidden"}>
+        <div class="nav-sub" id="${subId}"${open ? "" : " hidden"}>
           ${item.children.map(
         (child) => `<a href="${child.href}" class="${isActivePath(child.href, activePath) ? "active" : ""}">${child.icon}${child.label}</a>`
       ).join("")}
@@ -591,7 +617,7 @@ function mountShell(activePath, title, subtitle = "", actionsHtml = "") {
     window.location.href = "/";
   });
   bindMobileNav();
-  bindMortgagesNav();
+  bindNavGroups();
   bindThemeToggle();
   void watchApiStatus();
   return document.getElementById("page-root");
@@ -631,22 +657,25 @@ function setNavOpen(open) {
   toggle.setAttribute("aria-expanded", String(open));
   toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
 }
-function bindMortgagesNav() {
-  const toggle = document.getElementById("mortgages-nav-toggle");
-  const group = toggle?.closest(".nav-group");
-  const sub = document.getElementById("mortgages-nav-sub");
-  if (!toggle || !group || !sub) {
-    return;
-  }
-  toggle.addEventListener("click", () => {
-    const open = !group.classList.contains("open");
-    group.classList.toggle("open", open);
-    toggle.setAttribute("aria-expanded", String(open));
-    sub.hidden = !open;
-    try {
-      sessionStorage.setItem(MORTGAGES_NAV_KEY, open ? "1" : "0");
-    } catch {
+function bindNavGroups() {
+  document.querySelectorAll("[data-nav-group]").forEach((toggle) => {
+    const groupId = toggle.dataset.navGroup;
+    const group = toggle.closest(".nav-group");
+    const subId = toggle.getAttribute("aria-controls");
+    const sub = subId ? document.getElementById(subId) : null;
+    if (!groupId || !group || !sub) {
+      return;
     }
+    toggle.addEventListener("click", () => {
+      const open = !group.classList.contains("open");
+      group.classList.toggle("open", open);
+      toggle.setAttribute("aria-expanded", String(open));
+      sub.hidden = !open;
+      try {
+        sessionStorage.setItem(navGroupStorageKey(groupId), open ? "1" : "0");
+      } catch {
+      }
+    });
   });
 }
 function bindMobileNav() {

@@ -69,7 +69,7 @@ const currencyMark = (() => {
 
 const root = mountShell(
   "/calculator",
-  "Calculator",
+  "Mortgage Calculator",
   "Estimate monthly payments for repayment and interest-only mortgages."
 );
 

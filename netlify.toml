@@ -52,6 +52,11 @@
   status = 200
 
 [[redirects]]
+  from = "/capital-gains"
+  to = "/capital-gains.html"
+  status = 200
+
+[[redirects]]
   from = "/expenses"
   to = "/expenses.html"
   status = 200

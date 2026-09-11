@@ -12,13 +12,57 @@ import dashboardRoutes from "./routes/dashboard.js";
 import reportRoutes from "./routes/reports.js";
 import backupRoutes from "./routes/backup.js";
 
-function corsOrigin(): CorsOptions["origin"] {
-  const raw = process.env.WEBCLIENT_ORIGIN;
-  if (!raw) {
-    return true;
+function loopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+}
+
+function privateLanHost(hostname: string): boolean {
+  return /^(10|127)\.\d+\.\d+\.\d+$/.test(hostname) || /^192\.168\.\d+\.\d+$/.test(hostname) || /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(hostname);
+}
+
+function sameDevOrigin(left: string, right: string): boolean {
+  try {
+    const a = new URL(left);
+    const b = new URL(right);
+    if (a.protocol !== b.protocol || a.port !== b.port) {
+      return false;
+    }
+    if (a.hostname === b.hostname) {
+      return true;
+    }
+    return loopbackHost(a.hostname) && loopbackHost(b.hostname);
+  } catch {
+    return false;
   }
-  const origins = raw.split(",").map((value) => value.trim()).filter(Boolean);
-  return origins.length === 1 ? origins[0] : origins;
+}
+
+function corsOrigin(): CorsOptions["origin"] {
+  const allowed = (process.env.WEBCLIENT_ORIGIN || "")
+    .split(",")
+    .map((value) => value.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+
+  return (origin, callback) => {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    const request = origin.replace(/\/$/, "");
+    if (!allowed.length || allowed.some((item) => sameDevOrigin(item, request))) {
+      callback(null, true);
+      return;
+    }
+    try {
+      const host = new URL(request).hostname;
+      if (loopbackHost(host) || privateLanHost(host)) {
+        callback(null, true);
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    callback(null, false);
+  };
 }
 
 function parseServerlessBody(req: express.Request, _res: express.Response, next: express.NextFunction): void {
@@ -46,14 +90,14 @@ function parseServerlessBody(req: express.Request, _res: express.Response, next:
 
 export function createApp(): express.Express {
   const app = express();
-  app.use(parseServerlessBody);
-  app.use(express.json({ limit: "32mb" }));
   app.use(
     cors({
       origin: corsOrigin(),
       exposedHeaders: ["Content-Disposition"]
     })
   );
+  app.use(parseServerlessBody);
+  app.use(express.json({ limit: "32mb" }));
 
   app.get("/health", (_req, res) => {
     return res.json({ status: "ok" });
