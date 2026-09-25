@@ -67,6 +67,19 @@ async function api(path, options = {}) {
   }
   return data;
 }
+async function graphql(query, variables) {
+  const result = await api("/graphql", {
+    method: "POST",
+    body: JSON.stringify({ query, variables })
+  });
+  if (result.errors?.length) {
+    throw new Error(result.errors[0].message);
+  }
+  if (!result.data) {
+    throw new Error("GraphQL request returned no data.");
+  }
+  return result.data;
+}
 function getDecimalPrecision() {
   const n2 = Number(getUser()?.decimalPrecision);
   if (!Number.isFinite(n2)) {
@@ -98,16 +111,6 @@ function applyTheme(theme = getTheme()) {
 function setTheme(theme) {
   localStorage.setItem(THEME_KEY, theme);
   applyTheme(theme);
-}
-function qs(params) {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== void 0 && value !== null && value !== "") {
-      search.set(key, String(value));
-    }
-  }
-  const result = search.toString();
-  return result ? `?${result}` : "";
 }
 
 // src/shell.ts
@@ -869,6 +872,26 @@ function render(data) {
   document.getElementById("status-overview").innerHTML = renderStatus(data);
   document.getElementById("breakdowns").innerHTML = renderBreakdowns(data);
 }
+var DASHBOARD_QUERY = `
+  query Dashboard($year: Int, $scope: String) {
+    dashboard(year: $year, scope: $scope) {
+      year
+      cards {
+        rent { amount expected outstanding count }
+        expenses { amount mortgage property additional count }
+        netProfit { amount }
+        pendingExpenses { amount expenses mortgages count }
+        pendingIncome { amount count }
+      }
+      monthly { month label rent expenses netProfit pending }
+      breakdowns {
+        year { label rent expenses netProfit pending }
+        quarters { label rent expenses netProfit pending }
+        months { month label rent expenses netProfit pending }
+      }
+    }
+  }
+`;
 async function loadOverview() {
   const status = document.getElementById("status");
   const year = selectedYear();
@@ -877,7 +900,11 @@ async function loadOverview() {
   setTitle(year);
   setSubtitle(scope);
   try {
-    cache = await api(`/dashboard${qs({ year, scope })}`);
+    const data = await graphql(DASHBOARD_QUERY, {
+      year: Number(year),
+      scope
+    });
+    cache = data.dashboard;
     render(cache);
     setStatus(status, "", "info");
   } catch (error) {

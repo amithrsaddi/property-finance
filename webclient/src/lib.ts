@@ -113,6 +113,28 @@ export async function api<T>(
   return data;
 }
 
+type GraphQLResult<T> = {
+  data?: T;
+  errors?: Array<{ message: string }>;
+};
+
+export async function graphql<T>(
+  query: string,
+  variables?: Record<string, unknown>
+): Promise<T> {
+  const result = await api<GraphQLResult<T>>("/graphql", {
+    method: "POST",
+    body: JSON.stringify({ query, variables })
+  });
+  if (result.errors?.length) {
+    throw new Error(result.errors[0]!.message);
+  }
+  if (!result.data) {
+    throw new Error("GraphQL request returned no data.");
+  }
+  return result.data;
+}
+
 export async function apiFile(path: string): Promise<{ blob: Blob; filename: string; mimeType: string }> {
   const headers = new Headers();
   const token = getToken();

@@ -1,4 +1,4 @@
-import { api, getUser, money, qs } from "../lib.js";
+import { getUser, graphql, money } from "../lib.js";
 import { mountShell, setStatus } from "../shell.js";
 
 if (location.hash === "#settings") {
@@ -496,6 +496,27 @@ function render(data: Overview): void {
   document.getElementById("breakdowns")!.innerHTML = renderBreakdowns(data);
 }
 
+const DASHBOARD_QUERY = `
+  query Dashboard($year: Int, $scope: String) {
+    dashboard(year: $year, scope: $scope) {
+      year
+      cards {
+        rent { amount expected outstanding count }
+        expenses { amount mortgage property additional count }
+        netProfit { amount }
+        pendingExpenses { amount expenses mortgages count }
+        pendingIncome { amount count }
+      }
+      monthly { month label rent expenses netProfit pending }
+      breakdowns {
+        year { label rent expenses netProfit pending }
+        quarters { label rent expenses netProfit pending }
+        months { month label rent expenses netProfit pending }
+      }
+    }
+  }
+`;
+
 async function loadOverview(): Promise<void> {
   const status = document.getElementById("status") as HTMLDivElement;
   const year = selectedYear();
@@ -504,7 +525,11 @@ async function loadOverview(): Promise<void> {
   setTitle(year);
   setSubtitle(scope);
   try {
-    cache = await api<Overview>(`/dashboard${qs({ year, scope })}`);
+    const data = await graphql<{ dashboard: Overview }>(DASHBOARD_QUERY, {
+      year: Number(year),
+      scope
+    });
+    cache = data.dashboard;
     render(cache);
     setStatus(status, "", "info");
   } catch (error) {

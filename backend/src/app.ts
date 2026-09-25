@@ -9,6 +9,7 @@ import expenseRoutes from "./routes/expenses.js";
 import documentRoutes from "./routes/documents.js";
 import folderRoutes from "./routes/folders.js";
 import dashboardRoutes from "./routes/dashboard.js";
+import graphqlRoutes from "./routes/graphql.js";
 import reportRoutes from "./routes/reports.js";
 import backupRoutes from "./routes/backup.js";
 
@@ -112,6 +113,7 @@ export function createApp(): express.Express {
   app.use("/folders", folderRoutes);
   app.use("/documents", documentRoutes);
   app.use("/dashboard", dashboardRoutes);
+  app.use("/graphql", graphqlRoutes);
   app.use("/reports", reportRoutes);
   app.use("/backup", backupRoutes);
 

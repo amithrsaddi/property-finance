@@ -204,8 +204,8 @@ var NAV = [
     label: "Calculators",
     icon: ICON_CALCULATOR,
     children: [
-      { href: "/calculator", label: "Mortgage Calculator", icon: ICON_CALCULATOR },
-      { href: "/capital-gains", label: "Capital Gains Calculator", icon: ICON_GAINS }
+      { href: "/calculator", label: "Mortgage", icon: ICON_CALCULATOR },
+      { href: "/capital-gains", label: "Capital Gains", icon: ICON_GAINS }
     ]
   },
   { href: "/expenses", label: "Expenses", icon: ICON_EXPENSES },
